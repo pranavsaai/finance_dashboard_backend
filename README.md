@@ -408,4 +408,4 @@ All errors return `{"error": "message"}`. Validation errors return a field map.
 
 **`date` optional on records** — Covers entries like adjustments or opening balances. Dateless records count in totals but are excluded from `monthlyTrends`.
 
-**`POST /api/users` is public** — Bootstrapping problem: someone has to create the first admin. All subsequent user management requires an admin token.
+**`POST /api/users` is public** — Bootstrapping problem: someone has to create the first admin. All subsequent user management requires an admin token.70

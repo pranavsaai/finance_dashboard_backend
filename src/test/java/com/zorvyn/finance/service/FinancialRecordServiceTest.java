@@ -71,8 +71,6 @@ class FinancialRecordServiceTest {
         AuthContext.clear();
     }
 
-    // ---- createRecord ----
-
     @Test
     void createRecord_viewerCannotCreate_throwsAccessDenied() {
         when(userService.resolveCaller()).thenReturn(viewerUser);
@@ -98,7 +96,6 @@ class FinancialRecordServiceTest {
         verify(recordRepository).save(sampleRecord);
     }
 
-    // ---- getAllRecords ----
 
     @Test
     void getAllRecords_viewerCannotAccess_throwsAccessDenied() {
@@ -116,7 +113,6 @@ class FinancialRecordServiceTest {
         assertThat(result).hasSize(1);
     }
 
-    // ---- deleteRecord (soft delete) ----
 
     @Test
     void deleteRecord_recordNotFound_throwsNotFound() {
@@ -141,7 +137,6 @@ class FinancialRecordServiceTest {
         verify(recordRepository, never()).deleteById(any());
     }
 
-    // ---- filterRecords ----
 
     @Test
     void filterRecords_typeAndDateRange_usesCombinedQuery() {
@@ -184,7 +179,6 @@ class FinancialRecordServiceTest {
                 .isInstanceOf(AccessDeniedException.class);
     }
 
-    // ---- getPaginated ----
 
     @Test
     void getPaginated_viewer_throwsAccessDenied() {
