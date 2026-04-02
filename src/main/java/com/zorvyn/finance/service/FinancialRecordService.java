@@ -125,8 +125,6 @@ public class FinancialRecordService {
         return recordRepository.findByDeletedFalse(pageable).getContent();
     }
 
-    // ---- helpers ----
-
     private void assertAdmin(User user) {
         if (user.getRole() != Role.ADMIN) {
             throw new AccessDeniedException("Only ADMIN can perform this action");
