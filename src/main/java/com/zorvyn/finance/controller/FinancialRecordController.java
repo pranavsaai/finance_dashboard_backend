@@ -60,7 +60,7 @@ public class FinancialRecordController {
         return recordService.filterRecords(type, category, from, to, search);
     }
 
-    // all authenticated users
+    // ANALYST + ADMIN only
     @GetMapping("/paginated")
     public List<FinancialRecord> getPaginated(
             @RequestParam(defaultValue = "0") int page,
