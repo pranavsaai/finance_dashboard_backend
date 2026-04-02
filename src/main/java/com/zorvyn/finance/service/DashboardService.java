@@ -28,7 +28,7 @@ public class DashboardService {
     public DashboardSummary getSummary() {
         userService.resolveCaller(); // any authenticated user can view the dashboard
 
-        List<FinancialRecord> all = recordRepository.findAll();
+        List<FinancialRecord> all = recordRepository.findByDeletedFalse();
 
         double totalIncome = all.stream()
                 .filter(r -> r.getType() == RecordType.INCOME)
@@ -46,7 +46,7 @@ public class DashboardService {
                         Collectors.summingDouble(FinancialRecord::getAmount)
                 ));
 
-        List<Map<String, Object>> recentActivity = recordRepository.findTop5ByOrderByDateDesc()
+        List<Map<String, Object>> recentActivity = recordRepository.findTop5ByDeletedFalseOrderByDateDesc()
                 .stream()
                 .map(r -> {
                     Map<String, Object> entry = new LinkedHashMap<>();
@@ -73,6 +73,7 @@ public class DashboardService {
 
     /**
      * Aggregates net amount (income - expense) grouped by year-month.
+     * Example key: "2025-03"
      */
     private Map<String, Double> buildMonthlyTrends(List<FinancialRecord> records) {
         Map<String, Double> trends = new TreeMap<>(); // TreeMap keeps months in order

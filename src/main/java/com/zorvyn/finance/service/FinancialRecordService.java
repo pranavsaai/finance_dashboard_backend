@@ -30,7 +30,8 @@ public class FinancialRecordService {
     public FinancialRecord createRecord(FinancialRecord record) {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
-        record.setUserId(caller.getId()); // tag record with who created it
+        record.setUserId(caller.getId());
+        record.setDeleted(false);
         return recordRepository.save(record);
     }
 
@@ -38,7 +39,7 @@ public class FinancialRecordService {
     public List<FinancialRecord> getAllRecords() {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
-        return recordRepository.findAll();
+        return recordRepository.findByDeletedFalse();
     }
 
     // ADMIN only
@@ -47,6 +48,7 @@ public class FinancialRecordService {
         assertAdmin(caller);
 
         FinancialRecord existing = recordRepository.findById(id)
+                .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
 
         existing.setAmount(updated.getAmount());
@@ -58,70 +60,72 @@ public class FinancialRecordService {
         return recordRepository.save(existing);
     }
 
-    // ADMIN only
+    // ADMIN only - soft delete: marks the record as deleted instead of removing it
     public void deleteRecord(String id) {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
 
-        if (!recordRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Record not found with id: " + id);
-        }
-        recordRepository.deleteById(id);
+        FinancialRecord record = recordRepository.findById(id)
+                .filter(r -> !r.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
+
+        record.setDeleted(true);
+        recordRepository.save(record);
     }
 
-    /** Updates did regarding records filters:
-     * Filter records by type, category, and/or date range.
-     * All parameters are optional and fully combinable:
-     *   - type + category + date range → all three applied
-     *   - type + date range           → type and date range applied
-     *   - category + date range       → category and date range applied
-     *   - type + category             → both applied
-     *   - any single param            → that param alone
-     *   - no params                   → returns all records
+    /**
+     * Filter records by any combination of type, category, date range, or keyword search.
+     * All params are optional. When 'search' is provided it does a keyword match on category.
      * ANALYST + ADMIN only.
      */
     public List<FinancialRecord> filterRecords(RecordType type, String category,
-                                               LocalDate from, LocalDate to) {
+                                               LocalDate from, LocalDate to,
+                                               String search) {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
 
-        boolean hasType     = type != null;
-        boolean hasCategory = category != null && !category.isBlank();
+        // keyword search takes priority when provided
+        if (search != null && !search.isBlank()) {
+            return recordRepository.findByCategoryContainingIgnoreCaseAndDeletedFalse(search.trim());
+        }
+
+        boolean hasType      = type != null;
+        boolean hasCategory  = category != null && !category.isBlank();
         boolean hasDateRange = from != null && to != null;
 
         if (hasType && hasCategory && hasDateRange) {
-            return recordRepository.findByTypeAndCategoryAndDateBetween(type, category, from, to);
+            return recordRepository.findByTypeAndCategoryAndDateBetweenAndDeletedFalse(type, category, from, to);
         }
         if (hasType && hasDateRange) {
-            return recordRepository.findByTypeAndDateBetween(type, from, to);
+            return recordRepository.findByTypeAndDateBetweenAndDeletedFalse(type, from, to);
         }
         if (hasCategory && hasDateRange) {
-            return recordRepository.findByCategoryAndDateBetween(category, from, to);
+            return recordRepository.findByCategoryAndDateBetweenAndDeletedFalse(category, from, to);
         }
         if (hasType && hasCategory) {
-            return recordRepository.findByTypeAndCategory(type, category);
+            return recordRepository.findByTypeAndCategoryAndDeletedFalse(type, category);
         }
         if (hasDateRange) {
-            return recordRepository.findByDateBetween(from, to);
+            return recordRepository.findByDateBetweenAndDeletedFalse(from, to);
         }
         if (hasType) {
-            return recordRepository.findByType(type);
+            return recordRepository.findByTypeAndDeletedFalse(type);
         }
         if (hasCategory) {
-            return recordRepository.findByCategory(category);
+            return recordRepository.findByCategoryAndDeletedFalse(category);
         }
 
-        return recordRepository.findAll();
+        return recordRepository.findByDeletedFalse();
     }
 
-    // paginated listing - no role restriction beyond being a valid user
+    // any authenticated user
     public List<FinancialRecord> getPaginated(int page, int size) {
-        userService.resolveCaller(); // just validates the header is present
+        userService.resolveCaller();
         PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "date"));
-        return recordRepository.findAll(pageable).getContent();
+        return recordRepository.findByDeletedFalse(pageable).getContent();
     }
 
-    // Role assertion helpers 
+    // ---- helpers ----
 
     private void assertAdmin(User user) {
         if (user.getRole() != Role.ADMIN) {

@@ -35,4 +35,7 @@ public class FinancialRecord {
     private String notes;
 
     private String userId;
+
+    private boolean deleted = false;
 }
+

@@ -11,23 +11,19 @@ import java.util.List;
 
 public interface FinancialRecordRepository extends MongoRepository<FinancialRecord, String> {
 
-    List<FinancialRecord> findByType(RecordType type);
+    List<FinancialRecord> findByDeletedFalse();
+    List<FinancialRecord> findByTypeAndDeletedFalse(RecordType type);
+    List<FinancialRecord> findByCategoryAndDeletedFalse(String category);
+    List<FinancialRecord> findByTypeAndCategoryAndDeletedFalse(RecordType type, String category);
 
-    List<FinancialRecord> findByCategory(String category);
+    List<FinancialRecord> findByDateBetweenAndDeletedFalse(LocalDate from, LocalDate to);
+    List<FinancialRecord> findByTypeAndDateBetweenAndDeletedFalse(RecordType type, LocalDate from, LocalDate to);
+    List<FinancialRecord> findByCategoryAndDateBetweenAndDeletedFalse(String category, LocalDate from, LocalDate to);
+    List<FinancialRecord> findByTypeAndCategoryAndDateBetweenAndDeletedFalse(RecordType type, String category, LocalDate from, LocalDate to);
 
-    List<FinancialRecord> findByTypeAndCategory(RecordType type, String category);
+    List<FinancialRecord> findByCategoryContainingIgnoreCaseAndDeletedFalse(String keyword);
 
-    List<FinancialRecord> findByDateBetween(LocalDate from, LocalDate to);
+    Page<FinancialRecord> findByDeletedFalse(Pageable pageable);
 
-    List<FinancialRecord> findByTypeAndDateBetween(RecordType type, LocalDate from, LocalDate to);
-
-    List<FinancialRecord> findByCategoryAndDateBetween(String category, LocalDate from, LocalDate to);
-
-    List<FinancialRecord> findByTypeAndCategoryAndDateBetween(RecordType type, String category, LocalDate from, LocalDate to);
-
-    // for paginated listing
-    Page<FinancialRecord> findAll(Pageable pageable);
-
-    // recent N records sorted by date descending
-    List<FinancialRecord> findTop5ByOrderByDateDesc();
+    List<FinancialRecord> findTop5ByDeletedFalseOrderByDateDesc();
 }

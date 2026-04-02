@@ -22,7 +22,7 @@ public class FinancialRecordController {
         this.recordService = recordService;
     }
 
-    // ADMIN only - caller resolved from X-User-Id header
+    // ADMIN only
     @PostMapping
     public ResponseEntity<FinancialRecord> create(@Valid @RequestBody FinancialRecord record) {
         return new ResponseEntity<>(recordService.createRecord(record), HttpStatus.CREATED);
@@ -41,21 +41,23 @@ public class FinancialRecordController {
         return recordService.updateRecord(id, record);
     }
 
-    // ADMIN only
+    // ADMIN only - soft deletes the record (sets deleted=true, not removed from DB)
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) {
         recordService.deleteRecord(id);
         return ResponseEntity.noContent().build();
     }
 
-    // ANALYST + ADMIN - filter by type, category, and/or date range
+    // ANALYST + ADMIN
+    // supports: type, category, from/to date range, and keyword search (all optional, combinable)
     @GetMapping("/filter")
     public List<FinancialRecord> filter(
             @RequestParam(required = false) RecordType type,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return recordService.filterRecords(type, category, from, to);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String search) {
+        return recordService.filterRecords(type, category, from, to, search);
     }
 
     // all authenticated users

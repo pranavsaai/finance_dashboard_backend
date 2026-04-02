@@ -125,11 +125,14 @@ The `email` field has a unique index at the MongoDB level (`@Indexed(unique = tr
   "category": "string — required",
   "date":     "ISO date yyyy-MM-dd — optional",
   "notes":    "string — optional",
-  "userId":   "string — ID of the admin who created this record"
+  "userId":   "string — ID of the admin who created this record",
+  "deleted":  "boolean — default false, set to true on soft delete"
 }
 ```
 
 `date` is optional by design — some entries like adjustments or opening balances may not have a specific date. Records without a date still count in totals but are excluded from monthly trend calculations in the dashboard.
+
+`deleted` is used for soft deletes. When a record is deleted via the API it is never actually removed from MongoDB — the flag is just flipped to `true`. Every query filters by `deleted = false` so soft-deleted records are invisible to all listings, filters, and dashboard aggregations, but the data stays in the database for audit purposes.
 
 ---
 
@@ -189,31 +192,40 @@ Full CRUD with role enforcement on each operation:
 - `POST /api/records` — ADMIN only, tags the record with the caller's user ID
 - `GET /api/records` — ANALYST and above
 - `PUT /api/records/{id}` — ADMIN only, full field replacement
-- `DELETE /api/records/{id}` — ADMIN only, checks existence first to return a proper 404 rather than silently doing nothing
+- `DELETE /api/records/{id}` — ADMIN only, soft delete (see below)
 
-### 3. Filtering
+### 3. Soft delete
 
-`GET /api/records/filter` accepts any combination of `type`, `category`, `from`, and `to` as optional query params. All four can be used together or independently.
+`DELETE /api/records/{id}` does not remove the document from MongoDB. It sets `deleted = true` on the record and saves it. Every repository query used in the application filters by `deleted = false`, so soft-deleted records are completely invisible — they don't appear in listings, filters, paginated results, or the dashboard summary.
 
-When type and a date range are both provided, both filters apply simultaneously rather than one overriding the other. Each combination maps to a dedicated Spring Data query method:
+The data stays in MongoDB. If you query the collection directly you can still see deleted records, which is useful for auditing. From the API's perspective they no longer exist.
+
+### 4. Filtering and search
+
+`GET /api/records/filter` accepts any combination of `type`, `category`, `from`, `to`, and `search` as optional query params.
+
+When `search` is provided it does a case-insensitive partial match on the category field and takes priority over the other params. So `?search=sal` returns records with categories like Salary, Sales, etc.
+
+For the other params, all four can be used together or independently. When type and a date range are both provided, both filters apply simultaneously rather than one overriding the other. Each combination maps to a dedicated Spring Data query method:
 
 ```
-findByType(type)
-findByCategory(category)
-findByDateBetween(from, to)
-findByTypeAndCategory(type, category)
-findByTypeAndDateBetween(type, from, to)
-findByCategoryAndDateBetween(category, from, to)
-findByTypeAndCategoryAndDateBetween(type, category, from, to)
+findByTypeAndDeletedFalse(type)
+findByCategoryAndDeletedFalse(category)
+findByDateBetweenAndDeletedFalse(from, to)
+findByTypeAndCategoryAndDeletedFalse(type, category)
+findByTypeAndDateBetweenAndDeletedFalse(type, from, to)
+findByCategoryAndDateBetweenAndDeletedFalse(category, from, to)
+findByTypeAndCategoryAndDateBetweenAndDeletedFalse(type, category, from, to)
+findByCategoryContainingIgnoreCaseAndDeletedFalse(keyword)
 ```
 
-Spring Data generates the actual MongoDB queries from these method names — no hand-written query code.
+Spring Data generates the actual MongoDB queries from these method names — no hand-written query code. Every method also carries `AndDeletedFalse` so soft-deleted records are excluded from all filter results automatically.
 
-### 4. Pagination
+### 5. Pagination
 
 `GET /api/records/paginated` uses Spring Data's `Pageable` with `PageRequest.of(page, size, Sort.by(DESC, "date"))`. Results always come back newest first. Default is page 0, size 10. Available to any authenticated active user regardless of role.
 
-### 5. Dashboard summary
+### 6. Dashboard summary
 
 `GET /api/dashboard/summary` aggregates all financial records and returns six things in one call:
 
@@ -221,10 +233,12 @@ Spring Data generates the actual MongoDB queries from these method names — no 
 - `totalExpense` — sum of all EXPENSE records
 - `netBalance` — totalIncome minus totalExpense
 - `categoryTotals` — amounts grouped by category using `Collectors.groupingBy` + `summingDouble`
-- `recentActivity` — top 5 records by date via `findTop5ByOrderByDateDesc()`
+- `recentActivity` — top 5 records by date via `findTop5ByDeletedFalseOrderByDateDesc()`
 - `monthlyTrends` — net amount per month, keyed as `"2025-01"`, stored in a `TreeMap` so months sort chronologically automatically
 
-### 6. Validation and error handling
+All aggregations use `findByDeletedFalse()` so soft-deleted records are excluded from every number on the dashboard.
+
+### 7. Validation and error handling
 
 Input validation uses Jakarta Bean Validation annotations — `@NotBlank`, `@Email`, `@NotNull`, `@Positive`. When a controller parameter is annotated with `@Valid`, Spring validates the request body before the method body runs.
 
@@ -420,7 +434,8 @@ Response — 201 Created:
   "category": "Salary",
   "date": "2025-01-15",
   "notes": "January salary",
-  "userId": "6615a2f3c3b4a12d88f1e001"
+  "userId": "6615a2f3c3b4a12d88f1e001",
+  "deleted": false
 }
 ```
 
@@ -454,7 +469,7 @@ curl http://localhost:8080/api/records \
   -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
 ```
 
-Response — 200 OK: array of all records.
+Response — 200 OK: array of all non-deleted records.
 
 ---
 
@@ -479,9 +494,9 @@ Response — 200 OK: record with amount now `4200.0`.
 
 ---
 
-#### DELETE /api/records/{id} — Delete a record
+#### DELETE /api/records/{id} — Soft delete a record
 
-Admin only.
+Admin only. The record is not removed from MongoDB — `deleted` is set to `true`. It will no longer appear in any API response after this.
 
 ```bash
 curl -X DELETE http://localhost:8080/api/records/6615b1a2c3b4a12d88f2e004 \
@@ -512,6 +527,10 @@ curl "http://localhost:8080/api/records/filter?type=INCOME&from=2025-01-01&to=20
 # Type + category + date range
 curl "http://localhost:8080/api/records/filter?type=INCOME&category=Salary&from=2025-01-01&to=2025-03-31" \
   -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
+
+# Keyword search on category
+curl "http://localhost:8080/api/records/filter?search=sal" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
 ```
 
 ---
@@ -525,7 +544,7 @@ curl "http://localhost:8080/api/records/paginated?page=0&size=2" \
   -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
 ```
 
-Response — 200 OK: array of 2 most recent records.
+Response — 200 OK: array of 2 most recent non-deleted records.
 
 ---
 
@@ -644,10 +663,19 @@ Response:
     "category": "Salary",
     "date": "2025-01-15",
     "notes": "January salary",
-    "userId": "6615a2f3c3b4a12d88f1e001"
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
   }
 ]
 ```
+
+---
+
+### Phase 7b — Search by keyword
+
+`GET /api/records/filter?search=sal` with analyst ID.
+
+Should return all records where category contains "sal" (case-insensitive) — so Salary records come back. Useful when you don't remember the exact category name.
 
 ---
 
@@ -722,9 +750,9 @@ Response — 400 Bad Request:
 
 ---
 
-### Phase 12 — Delete a record
+### Phase 12 — Soft delete a record
 
-`DELETE /api/records/{id}` with admin ID — expect 204 No Content. Then `GET /api/records` again to confirm it's gone.
+`DELETE /api/records/{id}` with admin ID — expect 204 No Content. Then `GET /api/records` to confirm it no longer appears in the list. The record still exists in MongoDB with `deleted: true` but the API treats it as gone.
 
 ---
 
@@ -779,10 +807,10 @@ To run only the service tests:
 - VIEWER calling `getAllRecords` throws `AccessDeniedException`
 - ANALYST calling `getAllRecords` returns the list
 - `deleteRecord` with a non-existent ID throws `ResourceNotFoundException`
-- ADMIN `deleteRecord` with valid ID calls the repository delete method
-- `filterRecords` with type + date range routes to `findByTypeAndDateBetween`
-- `filterRecords` with type + category + date range routes to `findByTypeAndCategoryAndDateBetween`
-- `filterRecords` with no params routes to `findAll`
+- ADMIN `deleteRecord` with valid ID sets `deleted = true` — does not call `deleteById`
+- `filterRecords` with type + date range routes to `findByTypeAndDateBetweenAndDeletedFalse`
+- `filterRecords` with keyword search routes to `findByCategoryContainingIgnoreCaseAndDeletedFalse`
+- `filterRecords` with no params routes to `findByDeletedFalse`
 - VIEWER calling `filterRecords` throws `AccessDeniedException`
 
 ---
@@ -797,7 +825,11 @@ To run only the service tests:
 
 **Inactive users blocked immediately** — The active check is in `resolveCaller()`, which every authenticated endpoint goes through. No caching, no grace period — deactivating a user cuts access on their very next request.
 
-**All filter combinations handled explicitly** — Rather than letting date range silently override type (which was actually a bug), each combination of filter params routes to a dedicated repository method. All 8 combinations are covered so the caller always gets exactly what they asked for.
+**Soft delete instead of hard delete** — Records are never permanently removed. `DELETE` sets `deleted = true` and every query carries `AndDeletedFalse` so deleted records never surface through the API. The data stays in MongoDB which is useful if you ever need to audit what was deleted and when. Converting to a hard delete later would just mean removing the flag from the entity and swapping the query methods.
+
+**Search is category-based** — The `search` param does a case-insensitive partial match on category. It covers the most common lookup pattern. Full-text search across all fields would need a different MongoDB indexing strategy and felt like overkill for this scope.
+
+**All filter combinations handled explicitly** — Rather than letting date range silently override type (which was actually a bug in an earlier version), each combination of filter params routes to a dedicated repository method. All 8 combinations are covered so the caller always gets exactly what they asked for.
 
 **Date is optional on records** — Some entries like adjustments or opening balances may not have a meaningful date. These still count toward totals but are excluded from `monthlyTrends` since there's no month to bucket them into.
 
