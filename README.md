@@ -90,30 +90,30 @@ Each layer has a single responsibility. Controllers do not touch the database. S
 
 | Requirement | Status | Implementation |
 |---|:---:|---|
-| User creation and management | ✅ | `UserController` + `UserService` |
-| Role assignment (VIEWER/ANALYST/ADMIN) | ✅ | `Role` enum, `User.role` field |
-| User active/inactive status | ✅ | `User.active` flag, enforced in `resolveCaller()` |
-| Role-based restrictions | ✅ | `@PreAuthorize` + service-layer guards |
-| Financial record CRUD | ✅ | `FinancialRecordController` + `FinancialRecordService` |
-| Record filtering (date, category, type) | ✅ | 8 dedicated repository methods + keyword search |
-| Dashboard summary APIs | ✅ | MongoDB aggregation pipeline in `DashboardService` |
-| Access control enforcement | ✅ | Dual-layer: `@PreAuthorize` + `assertAdmin()`/`assertNotViewer()` |
-| Input validation | ✅ | `@Valid`, `@NotBlank`, `@Email`, `@Positive` |
-| Useful error responses | ✅ | `GlobalExceptionHandler` with `{"error": "..."}` format |
-| Appropriate HTTP status codes | ✅ | 201/200/204/400/401/403/404/429/500 |
-| Data persistence (MongoDB) | ✅ | Spring Data MongoDB, unique indexes |
+| User creation and management | YES | `UserController` + `UserService` |
+| Role assignment (VIEWER/ANALYST/ADMIN) | YES | `Role` enum, `User.role` field |
+| User active/inactive status | YES | `User.active` flag, enforced in `resolveCaller()` |
+| Role-based restrictions | YES | `@PreAuthorize` + service-layer guards |
+| Financial record CRUD | YES | `FinancialRecordController` + `FinancialRecordService` |
+| Record filtering (date, category, type) | YES | 8 dedicated repository methods + keyword search |
+| Dashboard summary APIs | YES | MongoDB aggregation pipeline in `DashboardService` |
+| Access control enforcement | YES | Dual-layer: `@PreAuthorize` + `assertAdmin()`/`assertNotViewer()` |
+| Input validation | YES | `@Valid`, `@NotBlank`, `@Email`, `@Positive` |
+| Useful error responses | YES | `GlobalExceptionHandler` with `{"error": "..."}` format |
+| Appropriate HTTP status codes | YES | 201/200/204/400/401/403/404/429/500 |
+| Data persistence (MongoDB) | YES | Spring Data MongoDB, unique indexes |
 
 ### Optional Enhancements
 
 | Enhancement | Status | Implementation |
 |---|:---:|---|
-| JWT authentication | ✅ | HMAC-SHA256 signed tokens, BCrypt password hashing |
-| Pagination | ✅ | `GET /api/records/paginated?page=0&size=10` |
-| Search support | ✅ | Case-insensitive keyword match on category + notes |
-| Soft delete | ✅ | `deleted = true` flag, never removes from DB |
-| Rate limiting | ✅ | In-memory 100 req/IP counter in `AuthFilter` |
-| Unit tests | ✅ | 19 tests, JUnit 5 + Mockito, no live MongoDB needed |
-| API documentation | ✅ | Swagger UI via SpringDoc at `/swagger-ui.html` |
+| JWT authentication | YES | HMAC-SHA256 signed tokens, BCrypt password hashing |
+| Pagination | YES | `GET /api/records/paginated?page=0&size=10` |
+| Search support | YES | Case-insensitive keyword match on category + notes |
+| Soft delete | YES | `deleted = true` flag, never removes from DB |
+| Rate limiting | YES | In-memory 100 req/IP counter in `AuthFilter` |
+| Unit tests | YES | 19 tests, JUnit 5 + Mockito, no live MongoDB needed |
+| API documentation | YES | Swagger UI via SpringDoc at `/swagger-ui.html` |
 
 ---
 
@@ -448,17 +448,17 @@ Counter resets on server restart. Production would use Redis for distributed, pe
 
 | Action | VIEWER | ANALYST | ADMIN |
 |---|:---:|:---:|:---:|
-| Login | ✅ | ✅ | ✅ |
-| View dashboard summary | ✅ | ✅ | ✅ |
-| List all records | — | ✅ | ✅ |
-| Filter records | — | ✅ | ✅ |
-| Paginated record listing | — | ✅ | ✅ |
-| Create record | — | — | ✅ |
-| Update record | — | — | ✅ |
-| Soft delete record | — | — | ✅ |
-| List all users | — | — | ✅ |
-| Get user by ID | — | — | ✅ |
-| Update user role/status | — | — | ✅ |
+| Login | YES | YES | YES |
+| View dashboard summary | YES | YES | YES |
+| List all records | — | YES | YES |
+| Filter records | — | YES | YES |
+| Paginated record listing | — | YES | YES |
+| Create record | — | — | YES |
+| Update record | — | — | YES |
+| Soft delete record | — | — | YES |
+| List all users | — | — | YES |
+| Get user by ID | — | — | YES |
+| Update user role/status | — | — | YES |
 
 ---
 
