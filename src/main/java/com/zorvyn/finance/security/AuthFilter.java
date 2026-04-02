@@ -4,34 +4,63 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 import java.io.IOException;
 
-/**
- * Reads the X-User-Id header from every incoming request and stores
- * it in AuthContext for downstream use.
- *
- * This is a mock authentication mechanism but not real jwt authentication as doing locally right now and its actually suitable for local development.
- * In production this would be replaced by a proper JWT or session filter.
- */
 @Component
+@RequiredArgsConstructor
 public class AuthFilter extends OncePerRequestFilter {
+
+    private final JwtUtil jwtUtil;
+    private static final Map<String, Integer> requestCount = new ConcurrentHashMap<>();
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain)
             throws ServletException, IOException {
+                String ip = request.getRemoteAddr();
 
-        String userId = request.getHeader("X-User-Id");
-        AuthContext.set(userId);
+                requestCount.put(ip, requestCount.getOrDefault(ip, 0) + 1);
 
-        try {
-            chain.doFilter(request, response);
-        } finally {
-            AuthContext.clear(); // always clean up ThreadLocal after request
-        }
-    }
+                if (requestCount.get(ip) > 100) {
+                    response.setStatus(429);
+                    response.getWriter().write("Too many requests");
+                    return;
+                }
+
+                String header = request.getHeader("Authorization");
+
+                if (header != null && header.startsWith("Bearer ")) {
+                    String token = header.substring(7);
+
+                    try {
+                        String userId = jwtUtil.extractUserId(token);
+                        AuthContext.set(userId);
+                        UsernamePasswordAuthenticationToken auth =
+                                new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
+
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+
+                        System.out.println("Authenticated user: " + userId);
+
+                    } catch (Exception e) {
+                        System.out.println("JWT ERROR: " + e.getMessage());
+                    }
+                }
+
+                try {
+                    chain.doFilter(request, response);
+                } finally {
+                    AuthContext.clear();
+                }
+            }
 }

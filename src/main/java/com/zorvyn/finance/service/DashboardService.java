@@ -4,22 +4,21 @@ import com.zorvyn.finance.dto.DashboardSummary;
 import com.zorvyn.finance.entity.FinancialRecord;
 import com.zorvyn.finance.entity.RecordType;
 import com.zorvyn.finance.repository.FinancialRecordRepository;
+
+import lombok.RequiredArgsConstructor;
+
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class DashboardService {
 
     private final FinancialRecordRepository recordRepository;
     private final UserService userService;
 
-    public DashboardService(FinancialRecordRepository recordRepository,
-                            UserService userService) {
-        this.recordRepository = recordRepository;
-        this.userService = userService;
-    }
 
     /**
      * Full dashboard summary - accessible by ALL roles (VIEWER, ANALYST, ADMIN).

@@ -1,5 +1,6 @@
 package com.zorvyn.finance.service;
 
+import com.zorvyn.finance.dto.PageResponse;
 import com.zorvyn.finance.entity.FinancialRecord;
 import com.zorvyn.finance.entity.RecordType;
 import com.zorvyn.finance.entity.Role;
@@ -7,6 +8,10 @@ import com.zorvyn.finance.entity.User;
 import com.zorvyn.finance.exception.AccessDeniedException;
 import com.zorvyn.finance.exception.ResourceNotFoundException;
 import com.zorvyn.finance.repository.FinancialRecordRepository;
+
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -15,16 +20,11 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class FinancialRecordService {
 
     private final FinancialRecordRepository recordRepository;
     private final UserService userService;
-
-    public FinancialRecordService(FinancialRecordRepository recordRepository,
-                                  UserService userService) {
-        this.recordRepository = recordRepository;
-        this.userService = userService;
-    }
 
     // ADMIN only
     public FinancialRecord createRecord(FinancialRecord record) {
@@ -84,9 +84,14 @@ public class FinancialRecordService {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
 
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("From date cannot be after To date");
+        }
+
         // keyword search takes priority when provided
         if (search != null && !search.isBlank()) {
-            return recordRepository.findByCategoryContainingIgnoreCaseAndDeletedFalse(search.trim());
+            String keyword = search.trim();
+            return recordRepository.findByCategoryContainingIgnoreCaseOrNotesContainingIgnoreCaseAndDeletedFalse(keyword, keyword);
         }
 
         boolean hasType      = type != null;
@@ -118,14 +123,28 @@ public class FinancialRecordService {
         return recordRepository.findByDeletedFalse();
     }
 
-    // any authenticated user
-    public List<FinancialRecord> getPaginated(int page, int size) {
-        userService.resolveCaller();
-        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "date"));
-        return recordRepository.findByDeletedFalse(pageable).getContent();
+    // ANALYST + ADMIN only (Viewers cannot view records in any form)
+    public PageResponse<FinancialRecord> getPaginated(int page, int size) {
+
+        User caller = userService.resolveCaller();
+        assertNotViewer(caller);
+
+        PageRequest pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "date")
+        );
+
+        Page<FinancialRecord> result = recordRepository.findByDeletedFalse(pageable);
+
+        return new PageResponse<>(
+                result.getContent(),
+                page,
+                size,
+                result.getTotalElements()
+        );
     }
 
-    // ---- helpers ----
 
     private void assertAdmin(User user) {
         if (user.getRole() != Role.ADMIN) {

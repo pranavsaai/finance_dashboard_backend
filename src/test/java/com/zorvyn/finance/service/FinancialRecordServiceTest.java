@@ -183,4 +183,13 @@ class FinancialRecordServiceTest {
         assertThatThrownBy(() -> recordService.filterRecords(null, null, null, null, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
+
+    // ---- getPaginated ----
+
+    @Test
+    void getPaginated_viewer_throwsAccessDenied() {
+        when(userService.resolveCaller()).thenReturn(viewerUser);
+        assertThatThrownBy(() -> recordService.getPaginated(0, 10))
+                .isInstanceOf(AccessDeniedException.class);
+    }
 }
