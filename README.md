@@ -2,7 +2,7 @@
 
 A role-based finance dashboard backend built as part of a backend developer assessment. The goal was a clean, maintainable API handling financial records, user roles, access control, and dashboard-level analytics.
 
-Stack: **Java 17 + Spring Boot 4.0.5 + MongoDB**
+Stack: **Java 17 + Spring Boot 3.2.4 + MongoDB**
 
 ---
 
@@ -27,7 +27,7 @@ Stack: **Java 17 + Spring Boot 4.0.5 + MongoDB**
 | Layer | Choice | Why |
 |---|---|---|
 | Language | Java 17 | LTS, strong typing, good fit for structured backend work |
-| Framework | Spring Boot 4.0.5 | Fast to set up, excellent ecosystem for REST APIs |
+| Framework | Spring Boot 3.2.4 | Fast to set up, excellent ecosystem for REST APIs |
 | Database | MongoDB | Flexible document model works well for financial records with optional fields |
 | Validation | Jakarta Bean Validation | Declarative `@NotBlank`, `@Email`, `@Positive` on entities — no manual null checks |
 | Boilerplate reduction | Lombok | `@Data`, `@NoArgsConstructor` etc. keep entity classes readable |
@@ -167,7 +167,7 @@ Incoming HTTP request
 | Action | VIEWER | ANALYST | ADMIN |
 |---|:---:|:---:|:---:|
 | View dashboard summary | yes | yes | yes |
-| Paginated record listing | yes | yes | yes |
+| Paginated record listing | — | yes | yes |
 | View and filter records | — | yes | yes |
 | Create / update / delete records | — | — | yes |
 | View and manage users | — | — | yes |
@@ -204,7 +204,7 @@ The data stays in MongoDB. If you query the collection directly you can still se
 
 `GET /api/records/filter` accepts any combination of `type`, `category`, `from`, `to`, and `search` as optional query params.
 
-When `search` is provided it does a case-insensitive partial match on the category field and takes priority over the other params. So `?search=sal` returns records with categories like Salary, Sales, etc.
+When `search` is provided it does a case-insensitive partial match on the category field and **takes priority over all other params** — so `?search=sal&type=EXPENSE` will ignore `type` and return all records whose category contains "sal". This is by design: treat `search` as a quick-lookup mode, not a filter combinator. Use the other params when you want precise filtering.
 
 For the other params, all four can be used together or independently. When type and a date range are both provided, both filters apply simultaneously rather than one overriding the other. Each combination maps to a dedicated Spring Data query method:
 
@@ -758,7 +758,7 @@ Response — 400 Bad Request:
 
 ## Unit tests
 
-18 unit tests across two service test classes. These run without a running MongoDB instance — Mockito mocks all repositories so tests are fast and isolated.
+19 unit tests across two service test classes. These run without a running MongoDB instance — Mockito mocks all repositories so tests are fast and isolated.
 
 ```bash
 ./mvnw test
@@ -771,11 +771,11 @@ Expected output:
 [INFO]  T E S T S
 [INFO] -------------------------------------------------------
 [INFO] Running com.zorvyn.finance.service.FinancialRecordServiceTest
-[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
 [INFO] Running com.zorvyn.finance.service.UserServiceTest
 [INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
 [INFO]
-[INFO] Tests run: 18, Failures: 0, Errors: 0
+[INFO] Tests run: 19, Failures: 0, Errors: 0
 [INFO] BUILD SUCCESS
 ```
 
@@ -799,7 +799,7 @@ To run only the service tests:
 - Duplicate email on `createUser` throws `IllegalArgumentException`
 - Valid new user is saved and returned correctly
 
-**FinancialRecordServiceTest — 9 tests:**
+**FinancialRecordServiceTest — 10 tests:**
 
 - VIEWER calling `createRecord` throws `AccessDeniedException`
 - ANALYST calling `createRecord` throws `AccessDeniedException`
@@ -828,6 +828,10 @@ To run only the service tests:
 **Soft delete instead of hard delete** — Records are never permanently removed. `DELETE` sets `deleted = true` and every query carries `AndDeletedFalse` so deleted records never surface through the API. The data stays in MongoDB which is useful if you ever need to audit what was deleted and when. Converting to a hard delete later would just mean removing the flag from the entity and swapping the query methods.
 
 **Search is category-based** — The `search` param does a case-insensitive partial match on category. It covers the most common lookup pattern. Full-text search across all fields would need a different MongoDB indexing strategy and felt like overkill for this scope.
+
+**Search takes priority over other filter params** — When `search` is provided alongside other params like `type` or date range, the keyword match runs exclusively and the other params are ignored. This is a deliberate simplification: `search` is a quick-lookup mode for when you don't know the exact category name. Combining keyword search with type/date filters simultaneously would require a different query strategy and adds complexity that wasn't warranted here.
+
+**Viewers cannot access any record endpoints** — The `/api/records/paginated` endpoint is restricted to ANALYST and ADMIN, consistent with the overall rule that Viewers have no access to financial records in any form. Viewers can only access the dashboard summary.
 
 **All filter combinations handled explicitly** — Rather than letting date range silently override type (which was actually a bug in an earlier version), each combination of filter params routes to a dedicated repository method. All 8 combinations are covered so the caller always gets exactly what they asked for.
 
