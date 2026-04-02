@@ -28,6 +28,6 @@ public class AuthController {
             throw new RuntimeException("Invalid password");
         }
 
-        return jwtUtil.generateToken(user.getId());
+        return jwtUtil.generateToken(user.getId(), user.getRole().name());
     }
 }

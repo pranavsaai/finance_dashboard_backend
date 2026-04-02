@@ -8,8 +8,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 
@@ -45,11 +47,10 @@ public class AuthFilter extends OncePerRequestFilter {
                     try {
                         String userId = jwtUtil.extractUserId(token);
                         AuthContext.set(userId);
-                        UsernamePasswordAuthenticationToken auth =
-                                new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
-
+                        String role = jwtUtil.extractRole(token);
+                        List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
+                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(auth);
-
                         System.out.println("Authenticated user: " + userId);
 
                     } catch (Exception e) {

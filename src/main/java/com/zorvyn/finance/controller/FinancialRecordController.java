@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -23,18 +24,21 @@ public class FinancialRecordController {
     private final FinancialRecordService recordService;
 
     // ADMIN only
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public ResponseEntity<FinancialRecord> create(@Valid @RequestBody FinancialRecord record) {
         return new ResponseEntity<>(recordService.createRecord(record), HttpStatus.CREATED);
     }
 
     // ANALYST + ADMIN
+    @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
     @GetMapping
     public List<FinancialRecord> getAll() {
         return recordService.getAllRecords();
     }
 
     // ADMIN only
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public FinancialRecord update(@PathVariable String id,
                                   @Valid @RequestBody FinancialRecord record) {
@@ -42,6 +46,7 @@ public class FinancialRecordController {
     }
 
     // ADMIN only - soft deletes the record (sets deleted=true, not removed from DB)
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) {
         recordService.deleteRecord(id);
@@ -50,6 +55,7 @@ public class FinancialRecordController {
 
     // ANALYST + ADMIN
     // supports: type, category, from/to date range, and keyword search (all optional, combinable)
+    @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
     @GetMapping("/filter")
     public List<FinancialRecord> filter(
             @RequestParam(required = false) RecordType type,
@@ -61,6 +67,7 @@ public class FinancialRecordController {
     }
 
     // ANALYST + ADMIN only
+    @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
     @GetMapping("/paginated")
     public PageResponse<FinancialRecord> getPaginated(
             @RequestParam(defaultValue = "0") int page,

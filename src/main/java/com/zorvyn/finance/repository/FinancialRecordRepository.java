@@ -11,8 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Repository
-public interface FinancialRecordRepository extends MongoRepository<FinancialRecord, String> {
-
+public interface FinancialRecordRepository extends MongoRepository<FinancialRecord, String>,FinancialRecordCustomRepository {
     List<FinancialRecord> findByDeletedFalse();
     List<FinancialRecord> findByTypeAndDeletedFalse(RecordType type);
     List<FinancialRecord> findByCategoryAndDeletedFalse(String category);
