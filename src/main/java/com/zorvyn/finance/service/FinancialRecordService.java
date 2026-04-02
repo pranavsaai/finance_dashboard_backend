@@ -118,12 +118,14 @@ public class FinancialRecordService {
         return recordRepository.findByDeletedFalse();
     }
 
-    // any authenticated user
+    // ANALYST + ADMIN only (Viewers cannot view records in any form)
     public List<FinancialRecord> getPaginated(int page, int size) {
-        userService.resolveCaller();
+        User caller = userService.resolveCaller();
+        assertNotViewer(caller);
         PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "date"));
         return recordRepository.findByDeletedFalse(pageable).getContent();
     }
+
 
     private void assertAdmin(User user) {
         if (user.getRole() != Role.ADMIN) {
