@@ -616,33 +616,214 @@ Wait for `Started FinanceApplication` in the terminal, then move on.
 
 Send three `POST /api/users` requests with ADMIN, ANALYST, and VIEWER roles. Save all three IDs from the responses.
 
+```bash
+# Create admin
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Arjun Admin", "email": "arjun@zorvyn.com", "role": "ADMIN"}'
+
+# Create analyst
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Priya Analyst", "email": "priya@zorvyn.com", "role": "ANALYST"}'
+
+# Create viewer
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Ravi Viewer", "email": "ravi@zorvyn.com", "role": "VIEWER"}'
+```
+
+All three return 201 Created. Example response for the admin:
+
+```json
+{
+  "id": "6615a2f3c3b4a12d88f1e001",
+  "name": "Arjun Admin",
+  "email": "arjun@zorvyn.com",
+  "role": "ADMIN",
+  "active": true,
+  "createdAt": "2025-01-15T10:30:00"
+}
+```
+
+Copy the three `id` values — you'll use them as the `X-User-Id` header in every subsequent request.
+
 ---
 
 ### Phase 3 — List users (admin only)
 
-`GET /api/users` with the admin's `X-User-Id`. All 3 users should appear.
+```bash
+curl http://localhost:8080/api/users \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001"
+```
+
+Response — 200 OK:
+
+```json
+[
+  {
+    "id": "6615a2f3c3b4a12d88f1e001",
+    "name": "Arjun Admin",
+    "email": "arjun@zorvyn.com",
+    "role": "ADMIN",
+    "active": true,
+    "createdAt": "2025-01-15T10:30:00"
+  },
+  {
+    "id": "6615a2f3c3b4a12d88f1e002",
+    "name": "Priya Analyst",
+    "email": "priya@zorvyn.com",
+    "role": "ANALYST",
+    "active": true,
+    "createdAt": "2025-01-15T10:31:00"
+  },
+  {
+    "id": "6615a2f3c3b4a12d88f1e003",
+    "name": "Ravi Viewer",
+    "email": "ravi@zorvyn.com",
+    "role": "VIEWER",
+    "active": true,
+    "createdAt": "2025-01-15T10:32:00"
+  }
+]
+```
+
+All 3 users appear. A non-admin caller on this endpoint would get a 403 instead.
 
 ---
 
 ### Phase 4 — Create financial records
 
-Four `POST /api/records` calls using the admin ID:
-- Salary INCOME, January 15
-- Rent EXPENSE, January 20
-- Salary INCOME, February 15
-- Food EXPENSE, February 22
+```bash
+curl -X POST http://localhost:8080/api/records \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001" \
+  -d '{"amount": 75000, "type": "INCOME", "category": "Salary", "date": "2025-01-15", "notes": "January salary"}'
+
+curl -X POST http://localhost:8080/api/records \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001" \
+  -d '{"amount": 15000, "type": "EXPENSE", "category": "Rent", "date": "2025-01-20"}'
+
+curl -X POST http://localhost:8080/api/records \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001" \
+  -d '{"amount": 75000, "type": "INCOME", "category": "Salary", "date": "2025-02-15", "notes": "February salary"}'
+
+curl -X POST http://localhost:8080/api/records \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001" \
+  -d '{"amount": 3500, "type": "EXPENSE", "category": "Food", "date": "2025-02-22"}'
+```
+
+All four return 201 Created. Example response for the first record:
+
+```json
+{
+  "id": "6615b1a2c3b4a12d88f2e001",
+  "amount": 75000.0,
+  "type": "INCOME",
+  "category": "Salary",
+  "date": "2025-01-15",
+  "notes": "January salary",
+  "userId": "6615a2f3c3b4a12d88f1e001",
+  "deleted": false
+}
+```
+
+Note that `userId` is automatically set to the caller's ID and `deleted` defaults to `false`.
 
 ---
 
 ### Phase 5 — List all records
 
-`GET /api/records` with the analyst's ID. All 4 records should come back.
+```bash
+curl http://localhost:8080/api/records \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
+```
+
+Response — 200 OK:
+
+```json
+[
+  {
+    "id": "6615b1a2c3b4a12d88f2e001",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-01-15",
+    "notes": "January salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e002",
+    "amount": 15000.0,
+    "type": "EXPENSE",
+    "category": "Rent",
+    "date": "2025-01-20",
+    "notes": null,
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e003",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-02-15",
+    "notes": "February salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e004",
+    "amount": 3500.0,
+    "type": "EXPENSE",
+    "category": "Food",
+    "date": "2025-02-22",
+    "notes": null,
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  }
+]
+```
+
+All 4 records are visible. The analyst ID works here — a VIEWER ID would return 403.
 
 ---
 
 ### Phase 6 — Update a record
 
-`PUT /api/records/{id}` with the admin ID — change the food expense from 3500 to 4200. Expect `"amount": 4200.0` in the response.
+```bash
+curl -X PUT http://localhost:8080/api/records/6615b1a2c3b4a12d88f2e004 \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001" \
+  -d '{
+    "amount": 4200,
+    "type": "EXPENSE",
+    "category": "Food",
+    "date": "2025-02-22",
+    "notes": "Revised food amount"
+  }'
+```
+
+Response — 200 OK:
+
+```json
+{
+  "id": "6615b1a2c3b4a12d88f2e004",
+  "amount": 4200.0,
+  "type": "EXPENSE",
+  "category": "Food",
+  "date": "2025-02-22",
+  "notes": "Revised food amount",
+  "userId": "6615a2f3c3b4a12d88f1e001",
+  "deleted": false
+}
+```
+
+`amount` is now `4200.0` and `notes` has been updated. The `userId` and `deleted` fields are preserved as-is.
 
 ---
 
@@ -673,15 +854,77 @@ Response:
 
 ### Phase 7b — Search by keyword
 
-`GET /api/records/filter?search=sal` with analyst ID.
+```bash
+curl "http://localhost:8080/api/records/filter?search=sal" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
+```
 
-Should return all records where category contains "sal" (case-insensitive) — so Salary records come back. Useful when you don't remember the exact category name.
+Response — 200 OK:
+
+```json
+[
+  {
+    "id": "6615b1a2c3b4a12d88f2e001",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-01-15",
+    "notes": "January salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e003",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-02-15",
+    "notes": "February salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  }
+]
+```
+
+Both Salary records are returned because "Salary" contains "sal" (case-insensitive). Rent and Food records are excluded.
 
 ---
 
 ### Phase 8 — Paginated listing
 
-`GET /api/records/paginated?page=0&size=2` — should return only the 2 most recent records.
+```bash
+curl "http://localhost:8080/api/records/paginated?page=0&size=2" \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
+```
+
+Response — 200 OK:
+
+```json
+[
+  {
+    "id": "6615b1a2c3b4a12d88f2e004",
+    "amount": 4200.0,
+    "type": "EXPENSE",
+    "category": "Food",
+    "date": "2025-02-22",
+    "notes": "Revised food amount",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e003",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-02-15",
+    "notes": "February salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  }
+]
+```
+
+Only the 2 most recent records are returned, sorted newest first by date. The January records are on page 1 (`?page=1&size=2`).
 
 ---
 
@@ -752,7 +995,58 @@ Response — 400 Bad Request:
 
 ### Phase 12 — Soft delete a record
 
-`DELETE /api/records/{id}` with admin ID — expect 204 No Content. Then `GET /api/records` to confirm it no longer appears in the list. The record still exists in MongoDB with `deleted: true` but the API treats it as gone.
+```bash
+curl -X DELETE http://localhost:8080/api/records/6615b1a2c3b4a12d88f2e004 \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e001"
+```
+
+Response — 204 No Content (empty body, no JSON).
+
+Now confirm the record is gone from the listing:
+
+```bash
+curl http://localhost:8080/api/records \
+  -H "X-User-Id: 6615a2f3c3b4a12d88f1e002"
+```
+
+Response — 200 OK (only 3 records now, Food record is absent):
+
+```json
+[
+  {
+    "id": "6615b1a2c3b4a12d88f2e001",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-01-15",
+    "notes": "January salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e002",
+    "amount": 15000.0,
+    "type": "EXPENSE",
+    "category": "Rent",
+    "date": "2025-01-20",
+    "notes": null,
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  },
+  {
+    "id": "6615b1a2c3b4a12d88f2e003",
+    "amount": 75000.0,
+    "type": "INCOME",
+    "category": "Salary",
+    "date": "2025-02-15",
+    "notes": "February salary",
+    "userId": "6615a2f3c3b4a12d88f1e001",
+    "deleted": false
+  }
+]
+```
+
+The Food record no longer appears anywhere in the API. The document still exists in MongoDB with `"deleted": true` — useful for audit — but every query filters it out.
 
 ---
 
