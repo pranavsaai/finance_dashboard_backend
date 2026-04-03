@@ -86,4 +86,13 @@ public class UserService {
         }
         return caller;
     }
+    public boolean isFirstUser() {
+        return userRepository.count() == 0;
+    }
+    public void assertAdmin() {
+        User caller = resolveCaller();
+        if (caller.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Only ADMIN can perform this action");
+        }
+    }
 }
