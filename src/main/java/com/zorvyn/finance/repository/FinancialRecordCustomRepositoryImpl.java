@@ -1,6 +1,7 @@
 package com.zorvyn.finance.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.*;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -60,37 +61,38 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
         return map;
     }
 
-    @Override
-    public Map<String, Double> getMonthlyTrends() {
+        @Override
+        public Map<String, Double> getMonthlyTrends() {
+                Aggregation agg = Aggregation.newAggregation(
 
-        Aggregation agg = Aggregation.newAggregation(
+                Aggregation.match(Criteria.where("deleted").is(false)),
+
                 Aggregation.project()
-                        .andExpression("year(date)").as("year")
-                        .andExpression("month(date)").as("month")
+                        .and(DateOperators.DateToString.dateOf("date").toString("%Y").withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("year")
+                        .and(DateOperators.DateToString.dateOf("date").toString("%m").withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("month")
                         .and("amount").as("amount")
                         .and("type").as("type"),
 
-                Aggregation.group("year", "month")
-                        .sum(
-                                ConditionalOperators.when(Criteria.where("type").is("INCOME"))
-                                        .thenValueOf("amount")
-                                        .otherwise(
-                                                ArithmeticOperators.Multiply.valueOf("amount").multiplyBy(-1)
-                                        )
-                        ).as("total")
+                Aggregation.group("year", "month").sum(ConditionalOperators.when(Criteria.where("type").is("INCOME")).thenValueOf("amount").otherwise(ArithmeticOperators.Multiply.valueOf("amount").multiplyBy(-1))).as("total"),
+
+                Aggregation.sort(Sort.by("year").ascending().and(Sort.by("month").ascending()))
         );
 
-        List<Map> results = mongoTemplate.aggregate(agg, "records", Map.class)
-                .getMappedResults();
+                List<Map> results = mongoTemplate.aggregate(agg, "records", Map.class)
+                        .getMappedResults();
 
-        Map<String, Double> map = new TreeMap<>();
+                Map<String, Double> map = new LinkedHashMap<>();
 
-        for (Map r : results) {
-            Map id = (Map) r.get("_id");
-            String key = id.get("year") + "-" + String.format("%02d", id.get("month"));
-            map.put(key, ((Number) r.get("total")).doubleValue());
+                for (Map r : results) {
+                        Map id = (Map) r.get("_id");
+
+                        String year = (String) id.get("year");
+                        String month = (String) id.get("month");
+
+                        String key = year + "-" + month;
+
+                        map.put(key, ((Number) r.get("total")).doubleValue());
+                }
+                return map;
         }
-
-        return map;
-    }
 }

@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,7 +64,7 @@ class FinancialRecordServiceTest {
         sampleRecord.setAmount(5000.0);
         sampleRecord.setType(RecordType.INCOME);
         sampleRecord.setCategory("Salary");
-        sampleRecord.setDate(LocalDate.of(2025, 3, 1));
+        sampleRecord.setDate(LocalDateTime.of(2025, 1, 15, 0, 0));
         sampleRecord.setDeleted(false);
     }
 
@@ -143,7 +144,7 @@ class FinancialRecordServiceTest {
     void filterRecords_typeAndDateRange_usesCombinedQuery() {
         when(userService.resolveCaller()).thenReturn(analystUser);
         LocalDate from = LocalDate.of(2025, 1, 1);
-        LocalDate to   = LocalDate.of(2025, 3, 31);
+        LocalDate to = LocalDate.of(2025, 1, 31);
         when(recordRepository.findByTypeAndDateBetweenAndDeletedFalse(RecordType.INCOME, from, to))
                 .thenReturn(List.of(sampleRecord));
 
