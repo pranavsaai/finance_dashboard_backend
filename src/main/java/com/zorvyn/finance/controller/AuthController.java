@@ -15,7 +15,7 @@ public class AuthController {
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final BCryptPasswordEncoder encoder;
 
     @PostMapping("/login")
     public String login(@RequestBody LoginRequest request) {

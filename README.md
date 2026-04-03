@@ -1,34 +1,25 @@
 # Finance Dashboard Backend
 
-A role-based finance dashboard backend built as a developer assessment for Zorvyn. Covers financial record management, user roles, JWT-based access control, dashboard analytics, and more.
+A role-based finance dashboard backend built as a developer assessment. Covers JWT authentication, financial record management, role-based access control, MongoDB aggregation-powered analytics, soft delete, pagination, search, rate limiting, and full unit test coverage.
 
-**Stack:** Java 17 · Spring Boot 3.2.4 · MongoDB · JWT (jjwt 0.11.5) · Spring Security · Lombok · JUnit 5 + Mockito · SpringDoc OpenAPI (Swagger)
+**Stack:** Java 17 · Spring Boot 3.2.4 · MongoDB · Spring Security · JJWT 0.11.5 · Lombok · JUnit 5 + Mockito · SpringDoc OpenAPI
 
 ---
 
 ## Table of Contents
 
 - [Project Structure](#project-structure)
-- [Features — Complete Coverage](#features--complete-coverage)
-- [Architecture & How It Works](#architecture--how-it-works)
-  - [1. Authentication Flow](#1-authentication-flow)
-  - [2. Request Lifecycle](#2-request-lifecycle)
-  - [3. Role Enforcement](#3-role-enforcement)
-  - [4. Dashboard Aggregation](#4-dashboard-aggregation)
-  - [5. Filter Routing](#5-filter-routing)
-  - [6. Soft Delete](#6-soft-delete)
-  - [7. Rate Limiting](#7-rate-limiting)
+- [Architecture & Request Lifecycle](#architecture--request-lifecycle)
+- [Authentication Flow](#authentication-flow)
+- [Role Enforcement](#role-enforcement)
 - [Data Models](#data-models)
 - [Role Permission Matrix](#role-permission-matrix)
 - [Setup & Running](#setup--running)
-- [API Documentation](#api-documentation)
-  - [Auth](#auth)
-  - [Users](#users)
-  - [Financial Records](#financial-records)
-  - [Dashboard](#dashboard)
-  - [Error Responses](#error-responses)
+- [API Reference](#api-reference)
+- [Dashboard Aggregation](#dashboard-aggregation)
+- [Filter Routing](#filter-routing)
 - [Unit Tests](#unit-tests)
-- [Optional Enhancements Implemented](#optional-enhancements-implemented)
+- [Features Coverage](#features-coverage)
 - [Assumptions & Tradeoffs](#assumptions--tradeoffs)
 
 ---
@@ -38,110 +29,130 @@ A role-based finance dashboard backend built as a developer assessment for Zorvy
 ```
 src/main/java/com/zorvyn/finance/
 │
-├── controller/           HTTP layer — routes requests, delegates to services
-│   ├── AuthController.java           POST /api/auth/login
-│   ├── UserController.java           CRUD for /api/users
-│   ├── FinancialRecordController.java CRUD + filter for /api/records
-│   └── DashboardController.java      GET /api/dashboard/summary
+├── controller/
+│   ├── AuthController.java              POST /api/auth/login
+│   ├── UserController.java              CRUD /api/users
+│   ├── FinancialRecordController.java   CRUD + filter /api/records
+│   └── DashboardController.java         GET /api/dashboard/summary
 │
-├── service/              Business logic + role enforcement
-│   ├── UserService.java              User management, caller resolution
-│   ├── FinancialRecordService.java   Record CRUD, filtering, pagination
-│   └── DashboardService.java         Aggregated summary computation
+├── service/
+│   ├── UserService.java                 User management, caller resolution
+│   ├── FinancialRecordService.java      Record CRUD, filtering, pagination
+│   └── DashboardService.java            Aggregated summary computation
 │
-├── repository/           Data access layer
-│   ├── UserRepository.java                         Spring Data MongoDB
-│   ├── FinancialRecordRepository.java              8 filter methods + pagination
-│   ├── FinancialRecordCustomRepository.java        Aggregation interface
-│   └── FinancialRecordCustomRepositoryImpl.java    MongoDB aggregation pipeline
+├── repository/
+│   ├── UserRepository.java
+│   ├── FinancialRecordRepository.java       8 filter methods + pagination
+│   ├── FinancialRecordCustomRepository.java Aggregation interface
+│   └── FinancialRecordCustomRepositoryImpl.java  MongoDB aggregation pipeline
 │
-├── entity/               MongoDB document models
-│   ├── User.java                     users collection
-│   ├── FinancialRecord.java          records collection
-│   ├── Role.java                     Enum: VIEWER, ANALYST, ADMIN
-│   └── RecordType.java               Enum: INCOME, EXPENSE
+├── entity/
+│   ├── User.java                        users collection
+│   ├── FinancialRecord.java             records collection
+│   ├── Role.java                        Enum: VIEWER, ANALYST, ADMIN
+│   └── RecordType.java                  Enum: INCOME, EXPENSE
 │
-├── dto/                  Request/response shapes
-│   ├── LoginRequest.java             { email, password }
-│   ├── UserUpdateRequest.java        { role?, active? } — partial update
-│   ├── DashboardSummary.java         Summary response with all aggregates
-│   └── PageResponse.java             Generic paginated wrapper
+├── dto/
+│   ├── LoginRequest.java                { email, password }
+│   ├── UserUpdateRequest.java           { role?, active? }
+│   ├── DashboardSummary.java            Summary response
+│   └── PageResponse.java                Generic paginated wrapper
 │
-├── security/             Auth infrastructure
-│   ├── AuthFilter.java               JWT extraction + rate limiting (OncePerRequestFilter)
-│   ├── AuthContext.java              ThreadLocal storage for current userId
-│   ├── JwtUtil.java                  HMAC-SHA256 token generation and validation
-│   └── SecurityConfig.java          Spring Security filter chain configuration
+├── security/
+│   ├── AuthFilter.java                  JWT validation + rate limiting (OncePerRequestFilter)
+│   ├── AuthContext.java                 ThreadLocal for current userId
+│   ├── JwtUtil.java                     HMAC-SHA256 token generation & validation
+│   └── SecurityConfig.java             Spring Security filter chain
 │
-└── exception/            Error handling
-    ├── GlobalExceptionHandler.java   @ControllerAdvice — maps exceptions to HTTP responses
-    ├── AccessDeniedException.java    Custom 403
-    ├── UnauthorizedException.java    Custom 401
-    └── ResourceNotFoundException.java Custom 404
+└── exception/
+    ├── GlobalExceptionHandler.java      @ControllerAdvice — maps all exceptions to HTTP
+    ├── AccessDeniedException.java       403
+    ├── UnauthorizedException.java       401
+    └── ResourceNotFoundException.java  404
 ```
 
-Each layer has a single responsibility. Controllers do not touch the database. Services do not know about HTTP. Repositories contain no business logic.
+**Separation of concerns:** Controllers parse HTTP only. Services hold all business logic and role checks. Repositories contain no logic. This makes each layer independently testable.
 
 ---
 
-## Features — Complete Coverage
+## Architecture & Request Lifecycle
 
-### Core Requirements
-
-| Requirement | Status | Implementation |
-|---|:---:|---|
-| User creation and management | YES | `UserController` + `UserService` |
-| Role assignment (VIEWER/ANALYST/ADMIN) | YES | `Role` enum, `User.role` field |
-| User active/inactive status | YES | `User.active` flag, enforced in `resolveCaller()` |
-| Role-based restrictions | YES | `@PreAuthorize` + service-layer guards |
-| Financial record CRUD | YES | `FinancialRecordController` + `FinancialRecordService` |
-| Record filtering (date, category, type) | YES | 8 dedicated repository methods + keyword search |
-| Dashboard summary APIs | YES | MongoDB aggregation pipeline in `DashboardService` |
-| Access control enforcement | YES | Dual-layer: `@PreAuthorize` + `assertAdmin()`/`assertNotViewer()` |
-| Input validation | YES | `@Valid`, `@NotBlank`, `@Email`, `@Positive` |
-| Useful error responses | YES | `GlobalExceptionHandler` with `{"error": "..."}` format |
-| Appropriate HTTP status codes | YES | 201/200/204/400/401/403/404/429/500 |
-| Data persistence (MongoDB) | YES | Spring Data MongoDB, unique indexes |
-
-### Optional Enhancements
-
-| Enhancement | Status | Implementation |
-|---|:---:|---|
-| JWT authentication | YES | HMAC-SHA256 signed tokens, BCrypt password hashing |
-| Pagination | YES | `GET /api/records/paginated?page=0&size=10` |
-| Search support | YES | Case-insensitive keyword match on category + notes |
-| Soft delete | YES | `deleted = true` flag, never removes from DB |
-| Rate limiting | YES | In-memory 100 req/IP counter in `AuthFilter` |
-| Unit tests | YES | 19 tests, JUnit 5 + Mockito, no live MongoDB needed |
-| API documentation | YES | Swagger UI via SpringDoc at `/swagger-ui.html` |
+```
+Incoming HTTP Request
+        │
+        ▼
+┌───────────────────────────────────────────┐
+│  AuthFilter  (OncePerRequestFilter)       │
+│  1. Rate limit: count per IP → 429 if >100│
+│  2. Extract Bearer token from header      │
+│  3. JwtUtil.extractUserId(token)          │
+│  4. JwtUtil.extractRole(token)            │
+│  5. AuthContext.set(userId) → ThreadLocal │
+│  6. Populate Spring SecurityContext       │
+│  finally: AuthContext.clear()  ← no leaks│
+└──────────────────┬────────────────────────┘
+                   │
+                   ▼
+┌───────────────────────────────────────────┐
+│  SecurityConfig                           │
+│  /api/auth/** → permitAll                 │
+│  POST /api/users → permitAll              │
+│  everything else → authenticated          │
+└──────────────────┬────────────────────────┘
+                   │
+                   ▼
+┌───────────────────────────────────────────┐
+│  Controller                               │
+│  @PreAuthorize("hasRole('ADMIN')")        │
+│  Parses params/body → calls service       │
+└──────────────────┬────────────────────────┘
+                   │
+                   ▼
+┌───────────────────────────────────────────┐
+│  Service                                  │
+│  resolveCaller() → load user, check active│
+│  assertAdmin() / assertNotViewer()        │
+│  Execute business logic                   │
+└──────────────────┬────────────────────────┘
+                   │
+                   ▼
+┌───────────────────────────────────────────┐
+│  Repository  (Spring Data MongoDB)        │
+│  Executes query → returns result          │
+└──────────────────┬────────────────────────┘
+                   │
+                   ▼
+         JSON Response to Client
+                   │
+                   ▼  (on any exception)
+┌───────────────────────────────────────────┐
+│  GlobalExceptionHandler                   │
+│  Maps exception → HTTP status + JSON body │
+└───────────────────────────────────────────┘
+```
 
 ---
 
-## Architecture & How It Works
-
-### 1. Authentication Flow
+## Authentication Flow
 
 ```
-POST /api/auth/login  { "email": "...", "password": "..." }
-         │
-         ▼
-  AuthController
-  ├─ userRepository.findByEmail(email)       → 404 if not found
-  ├─ BCryptPasswordEncoder.matches(raw, hash) → 400 if mismatch
-  └─ JwtUtil.generateToken(userId, role)
-         │
-         ▼
-  JWT payload:
-    { "sub": "<mongoUserId>", "role": "ADMIN", "iat": ... }
-  Signed with HMAC-SHA256 using a 32-byte secret key
-         │
-         ▼
-  Returns raw JWT string — client sends as:
-  Authorization: Bearer <token>
+POST /api/auth/login   { "email": "...", "password": "..." }
+        │
+        ▼
+  userRepository.findByEmail(email)         → 404 if not found
+  BCryptPasswordEncoder.matches(raw, hash)  → 400 if mismatch
+  JwtUtil.generateToken(userId, role)
+        │
+        ▼
+  JWT: { sub: "<mongoUserId>", role: "ADMIN", iat: ... }
+  Signed with HMAC-SHA256
+        │
+        ▼
+  Returns raw JWT string
+  Client sends: Authorization: Bearer <token>
 ```
 
-**Code reference — token generation:**
-
+**Token generation:**
 ```java
 // JwtUtil.java
 public String generateToken(String userId, String role) {
@@ -154,260 +165,47 @@ public String generateToken(String userId, String role) {
 }
 ```
 
----
-
-### 2. Request Lifecycle
-
-Every authenticated request flows through these layers in order:
-
-```
-Incoming HTTP Request
-        │
-        ▼
-  AuthFilter  (OncePerRequestFilter)
-  ├─ Rate limit: count requests per IP → 429 if > 100
-  ├─ Read Authorization header → extract Bearer token
-  ├─ JwtUtil.extractUserId(token) → validate signature
-  ├─ JwtUtil.extractRole(token) → extract role claim
-  ├─ AuthContext.set(userId) → store in ThreadLocal
-  └─ Set Spring SecurityContext with role authority
-        │
-        ▼
-  SecurityConfig
-  ├─ /api/auth/** → permitAll (no token required)
-  ├─ POST /api/users → permitAll (bootstrap first admin)
-  └─ Everything else → must be authenticated
-        │
-        ▼
-  @PreAuthorize annotation on controller method
-  e.g. hasRole('ADMIN'), hasAnyRole('ADMIN','ANALYST')
-        │
-        ▼
-  Controller
-  Parses request params/body, delegates to service
-        │
-        ▼
-  Service
-  ├─ AuthContext.get() → get userId from ThreadLocal
-  ├─ userRepository.findById(userId) → load User
-  ├─ assertAdmin() or assertNotViewer() → role check
-  └─ Run business logic
-        │
-        ▼
-  Repository
-  Spring Data MongoDB executes query
-        │
-        ▼
-  Response JSON returned to client
-        │
-        ▼
-  AuthFilter finally block: AuthContext.clear() ← prevents ThreadLocal leaks
-```
+`POST /api/users` is public — required to bootstrap the first admin. After that, all management needs an admin token.
 
 ---
 
-### 3. Role Enforcement
+## Role Enforcement
 
-Role checks happen in **two places** intentionally:
+Role checks are intentionally enforced at **two layers**:
 
-**Layer 1 — Controller (@PreAuthorize):**
+**Layer 1 — `@PreAuthorize` on controllers** catches unauthorized calls before they reach service logic:
 ```java
-// FinancialRecordController.java
 @PreAuthorize("hasRole('ADMIN')")
 @PostMapping
-public ResponseEntity<FinancialRecord> create(@Valid @RequestBody FinancialRecord record) {
-    return new ResponseEntity<>(recordService.createRecord(record), HttpStatus.CREATED);
-}
+public ResponseEntity<FinancialRecord> create(...) { ... }
 
 @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
 @GetMapping
-public List<FinancialRecord> getAll() {
-    return recordService.getAllRecords();
-}
+public List<FinancialRecord> getAll() { ... }
 ```
 
-**Layer 2 — Service (explicit role check):**
+**Layer 2 — explicit guards in services** ensure enforcement even when a service is called internally:
 ```java
-// FinancialRecordService.java
 public FinancialRecord createRecord(FinancialRecord record) {
-    User caller = userService.resolveCaller(); // fetches from DB, checks active
-    assertAdmin(caller);                        // throws 403 if not ADMIN
+    User caller = userService.resolveCaller();
+    assertAdmin(caller);   // throws 403 if not ADMIN
     record.setUserId(caller.getId());
     record.setDeleted(false);
     return recordRepository.save(record);
 }
-
-private void assertAdmin(User user) {
-    if (user.getRole() != Role.ADMIN) {
-        throw new AccessDeniedException("Only ADMIN can perform this action");
-    }
-}
-
-private void assertNotViewer(User user) {
-    if (user.getRole() == Role.VIEWER) {
-        throw new AccessDeniedException("VIEWER role does not have access to records");
-    }
-}
 ```
 
-`resolveCaller()` also checks the `active` flag — a deactivated account is rejected on the very next request:
-
+`resolveCaller()` also checks the `active` flag — a deactivated account is blocked on its very next request:
 ```java
-// UserService.java
 public User resolveCaller() {
     String callerId = AuthContext.get();
-    if (callerId == null || callerId.isBlank()) {
-        throw new UnauthorizedException("Missing X-User-Id header");
-    }
+    if (callerId == null) throw new UnauthorizedException("Missing auth");
     User caller = userRepository.findById(callerId)
-            .orElseThrow(() -> new ResourceNotFoundException("Caller user not found"));
-    if (!caller.isActive()) {
-        throw new UnauthorizedException("Account is inactive");  // 401
-    }
+            .orElseThrow(() -> new ResourceNotFoundException("Caller not found"));
+    if (!caller.isActive()) throw new UnauthorizedException("Account is inactive");
     return caller;
 }
 ```
-
----
-
-### 4. Dashboard Aggregation
-
-```
-GET /api/dashboard/summary
-        │
-        ▼
-  DashboardService.getSummary()
-  ├─ resolveCaller()                  → any active user (all roles allowed)
-  │
-  ├─ recordRepository.getTotalIncome()
-  │   MongoDB aggregation:
-  │   match(type=INCOME, deleted=false) → group() → sum(amount)
-  │
-  ├─ recordRepository.getTotalExpense()
-  │   MongoDB aggregation:
-  │   match(type=EXPENSE, deleted=false) → group() → sum(amount)
-  │
-  ├─ totalIncome - totalExpense        → netBalance
-  │
-  ├─ recordRepository.getCategoryTotals()
-  │   MongoDB aggregation:
-  │   match(deleted=false) → group(category) → sum(amount)
-  │   Returns Map<String, Double>
-  │
-  ├─ recordRepository.getMonthlyTrends()
-  │   MongoDB aggregation:
-  │   project(year, month, amount, type)
-  │   → group(year+month) → conditional sum (INCOME positive, EXPENSE negative)
-  │   Returns TreeMap<"YYYY-MM", Double> (sorted chronologically)
-  │
-  └─ recordRepository.findTop5ByDeletedFalseOrderByDateDesc()
-      → Last 5 records as recentActivity
-```
-
-**Code reference — MongoDB aggregation for monthly trends:**
-
-```java
-// FinancialRecordCustomRepositoryImpl.java
-public Map<String, Double> getMonthlyTrends() {
-    Aggregation agg = Aggregation.newAggregation(
-        Aggregation.project()
-            .andExpression("year(date)").as("year")
-            .andExpression("month(date)").as("month")
-            .and("amount").as("amount")
-            .and("type").as("type"),
-        Aggregation.group("year", "month")
-            .sum(
-                ConditionalOperators.when(Criteria.where("type").is("INCOME"))
-                    .thenValueOf("amount")
-                    .otherwise(
-                        ArithmeticOperators.Multiply.valueOf("amount").multiplyBy(-1)
-                    )
-            ).as("total")
-    );
-    // ... Returns TreeMap for automatic chronological sorting
-}
-```
-
-`TreeMap` is used so months sort chronologically without extra logic.
-
----
-
-### 5. Filter Routing
-
-`GET /api/records/filter` accepts `type`, `category`, `from`, `to`, and `search` — all optional, all combinable.
-
-When `search` is provided it runs a case-insensitive keyword match against category and notes, ignoring other params. Otherwise, the service routes to one of 8 explicit Spring Data query methods so no filter combination ever silently overrides another:
-
-```java
-// FinancialRecordService.java — filterRecords()
-if (search != null && !search.isBlank()) {
-    return recordRepository
-        .findByCategoryContainingIgnoreCaseOrNotesContainingIgnoreCaseAndDeletedFalse(keyword, keyword);
-}
-
-// Then for structured filters:
-if (hasType && hasCategory && hasDateRange)
-    → findByTypeAndCategoryAndDateBetweenAndDeletedFalse()
-if (hasType && hasDateRange)
-    → findByTypeAndDateBetweenAndDeletedFalse()
-if (hasCategory && hasDateRange)
-    → findByCategoryAndDateBetweenAndDeletedFalse()
-if (hasType && hasCategory)
-    → findByTypeAndCategoryAndDeletedFalse()
-if (hasDateRange)
-    → findByDateBetweenAndDeletedFalse()
-if (hasType)
-    → findByTypeAndDeletedFalse()
-if (hasCategory)
-    → findByCategoryAndDeletedFalse()
-// no params:
-    → findByDeletedFalse()
-```
-
-Spring Data generates actual MongoDB queries from method names. Every method has `AndDeletedFalse` — soft-deleted records are always excluded.
-
----
-
-### 6. Soft Delete
-
-```java
-// FinancialRecordService.java
-public void deleteRecord(String id) {
-    User caller = userService.resolveCaller();
-    assertAdmin(caller);
-
-    FinancialRecord record = recordRepository.findById(id)
-            .filter(r -> !r.isDeleted())
-            .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
-
-    record.setDeleted(true);      // marks as deleted — never removes from MongoDB
-    recordRepository.save(record);
-}
-```
-
-`DELETE /api/records/{id}` sets `deleted = true` and saves. No document is removed from MongoDB. Every query carries `AndDeletedFalse` so deleted records are invisible through all APIs but remain in the database for audit purposes.
-
----
-
-### 7. Rate Limiting
-
-In-memory per-IP counter lives in `AuthFilter`. Counter increments on every request; at > 100 it returns HTTP 429 immediately before any other processing:
-
-```java
-// AuthFilter.java
-private static final Map<String, Integer> requestCount = new ConcurrentHashMap<>();
-
-String ip = request.getRemoteAddr();
-requestCount.put(ip, requestCount.getOrDefault(ip, 0) + 1);
-
-if (requestCount.get(ip) > 100) {
-    response.setStatus(429);
-    response.getWriter().write("Too many requests");
-    return;
-}
-```
-
-Counter resets on server restart. Production would use Redis for distributed, persistent rate limiting.
 
 ---
 
@@ -415,32 +213,32 @@ Counter resets on server restart. Production would use Redis for distributed, pe
 
 ### `users` collection
 
-| Field | Type | Constraints |
+| Field | Type | Notes |
 |---|---|---|
 | `_id` | ObjectId | Auto-generated |
 | `name` | String | `@NotBlank` |
-| `email` | String | `@Email`, `@NotBlank`, unique index |
-| `password` | String | `@NotBlank`, BCrypt-hashed before storage |
+| `email` | String | `@Email`, unique index |
+| `password` | String | BCrypt-hashed, never returned in responses |
 | `role` | VIEWER \| ANALYST \| ADMIN | `@NotNull` |
 | `active` | boolean | Default `true` |
-| `createdAt` | LocalDateTime | Set on creation (`LocalDateTime.now()`) |
+| `createdAt` | LocalDateTime | Set on creation |
 
-### `records` collection (mapped to `financialRecord` in MongoDB)
+### `records` collection
 
-| Field | Type | Constraints |
+| Field | Type | Notes |
 |---|---|---|
 | `_id` | ObjectId | Auto-generated |
-| `amount` | Double | `@NotNull`, `@Positive` (must be > 0) |
+| `amount` | Double | `@NotNull`, `@Positive` |
 | `type` | INCOME \| EXPENSE | `@NotNull` |
 | `category` | String | `@NotBlank` |
-| `date` | LocalDate | Optional (format: `yyyy-MM-dd`) |
+| `date` | LocalDate | Optional (yyyy-MM-dd) |
 | `notes` | String | Optional |
-| `userId` | String | Set to the creating admin's ID |
-| `deleted` | boolean | Default `false`, hidden from API responses (`@JsonIgnore`) |
-| `createdAt` | LocalDateTime | `@CreatedDate` (Spring Data auditing) |
-| `updatedAt` | LocalDateTime | `@LastModifiedDate` (Spring Data auditing) |
+| `userId` | String | Admin ID who created the record |
+| `deleted` | boolean | Default `false`, `@JsonIgnore` — hidden from responses |
+| `createdAt` | LocalDateTime | Spring Data `@CreatedDate` |
+| `updatedAt` | LocalDateTime | Spring Data `@LastModifiedDate` |
 
-`date` is optional — entries like adjustments or opening balances may not have a specific date. Dateless records count in totals but are excluded from `monthlyTrends`.
+`date` is optional — entries like adjustments may have no date. Dateless records count in totals but are excluded from `monthlyTrends`.
 
 ---
 
@@ -448,39 +246,36 @@ Counter resets on server restart. Production would use Redis for distributed, pe
 
 | Action | VIEWER | ANALYST | ADMIN |
 |---|:---:|:---:|:---:|
-| Login | YES | YES | YES |
-| View dashboard summary | YES | YES | YES |
-| List all records | — | YES | YES |
-| Filter records | — | YES | YES |
-| Paginated record listing | — | YES | YES |
-| Create record | — | — | YES |
-| Update record | — | — | YES |
-| Soft delete record | — | — | YES |
-| List all users | — | — | YES |
-| Get user by ID | — | — | YES |
-| Update user role/status | — | — | YES |
+| Login | ✓ | ✓ | ✓ |
+| Dashboard summary | ✓ | ✓ | ✓ |
+| List / filter / paginate records | — | ✓ | ✓ |
+| Create record | — | — | ✓ |
+| Update record | — | — | ✓ |
+| Soft delete record | — | — | ✓ |
+| List / get / update users | — | — | ✓ |
 
 ---
 
 ## Setup & Running
 
-**Prerequisites:** Java 17+, MongoDB running on `localhost:27017` (or a MongoDB Atlas URI)
+**Prerequisites:** Java 17+, MongoDB on `localhost:27017` (or Atlas URI)
 
 ```bash
-# 1. Navigate into the project directory
-cd finance
+# 1. Clone and enter the project
+git clone https://github.com/pranavsaai/finance_dashboard_backend.git
+cd finance_dashboard_backend
 
 # 2. Set MongoDB URI (defaults to localhost if not set)
 export MONGO_URI_FINANCE=mongodb://localhost:27017/finance_db
 
-# For MongoDB Atlas:
+# Atlas:
 # export MONGO_URI_FINANCE=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/finance_db
 
-# 3. Run (Maven wrapper included — no local Maven install needed)
+# 3. Run (no local Maven needed — wrapper included)
 ./mvnw spring-boot:run
 
-# Server starts at: http://localhost:8080
-# Swagger UI at:    http://localhost:8080/swagger-ui.html
+# Server:    http://localhost:8080
+# Swagger:   http://localhost:8080/swagger-ui.html
 ```
 
 **application.properties:**
@@ -490,85 +285,60 @@ spring.application.name=finance
 springdoc.swagger-ui.path=/swagger-ui.html
 ```
 
+**Run tests:**
+```bash
+./mvnw test
+```
+
 ---
 
-## API Documentation
+## API Reference
 
-All authenticated endpoints require:
+All endpoints except `POST /api/auth/login` and `POST /api/users` require:
 ```
 Authorization: Bearer <jwt-token>
 ```
 
-### Auth
-
 ---
 
-#### `POST /api/auth/login`
+### Auth
 
-Login with email and password. Returns a JWT token.
+#### `POST /api/auth/login` — Login
 
-**Access:** Public (no token required)
+**Access:** Public
 
-**Request body:**
-```json
-{
-  "email": "arjun@zorvyn.com",
-  "password": "pass123"
-}
-```
-
-**Sample curl:**
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "arjun@zorvyn.com", "password": "pass123"}'
 ```
 
-**Success response (200):**
+**200 OK** — returns raw JWT string:
 ```
-eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2NjFlOGE...
+eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2NjFl...
 ```
-Raw JWT string. Use it as `Authorization: Bearer <this-value>`.
 
 **Error responses:**
 ```json
-{ "error": "User not found" }           // 404
-{ "error": "Invalid password" }         // 500 (mapped via GlobalExceptionHandler)
+{ "error": "User not found" }      // 404
+{ "error": "Invalid password" }    // 400
 ```
 
 ---
 
 ### Users
 
-`POST /api/users` is public for bootstrapping the first admin.
-All other user endpoints require an `ADMIN` token.
+#### `POST /api/users` — Create user
 
----
+**Access:** Public (bootstrap first admin, then manage via admin token)
 
-#### `POST /api/users`
-
-Create a new user. First call bootstraps your admin account.
-
-**Access:** Public
-
-**Request body:**
-```json
-{
-  "name": "Arjun Admin",
-  "email": "arjun@zorvyn.com",
-  "password": "pass123",
-  "role": "ADMIN"
-}
-```
-
-**Sample curl:**
 ```bash
 curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
   -d '{"name": "Arjun Admin", "email": "arjun@zorvyn.com", "password": "pass123", "role": "ADMIN"}'
 ```
 
-**Success response (201):**
+**201 Created:**
 ```json
 {
   "id": "661e8a3f2c4b1a0012abcdef",
@@ -579,136 +349,79 @@ curl -X POST http://localhost:8080/api/users \
   "createdAt": "2025-01-15T10:30:00"
 }
 ```
-> Note: `password` is never returned in responses.
+> `password` is never returned in any response.
 
-**Validation errors (400):**
+**400 — validation failure:**
 ```json
 {
   "name": "Name is required",
-  "email": "Provide a valid email address",
-  "role": "Role is required (VIEWER, ANALYST, ADMIN)"
+  "email": "Provide a valid email address"
 }
 ```
-
-**Duplicate email (400):**
+**400 — duplicate email:**
 ```json
 { "error": "A user with this email already exists" }
 ```
 
 ---
 
-#### `GET /api/users`
+#### `GET /api/users` — List all users
 
-List all users.
+**Access:** ADMIN
 
-**Access:** ADMIN only
-
-**Sample curl:**
 ```bash
-curl -X GET http://localhost:8080/api/users \
+curl http://localhost:8080/api/users \
   -H "Authorization: Bearer <admin-token>"
 ```
 
-**Success response (200):**
-```json
-[
-  {
-    "id": "661e8a3f2c4b1a0012abcdef",
-    "name": "Arjun Admin",
-    "email": "arjun@zorvyn.com",
-    "role": "ADMIN",
-    "active": true,
-    "createdAt": "2025-01-15T10:30:00"
-  },
-  {
-    "id": "661e8b4a3d5c2b1123ghijkl",
-    "name": "Priya Analyst",
-    "email": "priya@zorvyn.com",
-    "role": "ANALYST",
-    "active": true,
-    "createdAt": "2025-01-16T09:00:00"
-  }
-]
-```
+**200 OK:** Array of user objects.
 
 ---
 
-#### `GET /api/users/{id}`
+#### `GET /api/users/{id}` — Get user by ID
 
-Get a single user by their MongoDB ID.
+**Access:** ADMIN
 
-**Access:** ADMIN only
-
-**Sample curl:**
 ```bash
-curl -X GET http://localhost:8080/api/users/661e8a3f2c4b1a0012abcdef \
+curl http://localhost:8080/api/users/661e8a3f2c4b1a0012abcdef \
   -H "Authorization: Bearer <admin-token>"
 ```
 
-**Success response (200):** Same shape as individual user object above.
-
-**Not found (404):**
+**404:**
 ```json
 { "error": "User not found with id: 661e8a3f2c4b1a0012abcdef" }
 ```
 
 ---
 
-#### `PATCH /api/users/{id}`
+#### `PATCH /api/users/{id}` — Update role or status
 
-Partially update a user's role and/or active status. Only provided fields are applied.
+**Access:** ADMIN — all fields optional, only provided fields are applied.
 
-**Access:** ADMIN only
-
-**Request body (all fields optional):**
-```json
-{ "role": "ANALYST" }
-```
-```json
-{ "active": false }
-```
-```json
-{ "role": "ADMIN", "active": true }
-```
-
-**Sample curl — deactivate a user:**
 ```bash
+# Change role only
+curl -X PATCH http://localhost:8080/api/users/661e8b4a3d5c2b1123ghijkl \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "ANALYST"}'
+
+# Deactivate only
 curl -X PATCH http://localhost:8080/api/users/661e8b4a3d5c2b1123ghijkl \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"active": false}'
 ```
 
-**Success response (200):** Updated user object.
+**200 OK:** Updated user object.
 
 ---
 
 ### Financial Records
 
-All record endpoints require an authenticated token.
+#### `POST /api/records` — Create record
 
----
+**Access:** ADMIN
 
-#### `POST /api/records`
-
-Create a new financial record.
-
-**Access:** ADMIN only
-
-**Request body:**
-```json
-{
-  "amount": 75000,
-  "type": "INCOME",
-  "category": "Salary",
-  "date": "2025-01-15",
-  "notes": "January salary"
-}
-```
-
-`date` and `notes` are optional. `type` must be `INCOME` or `EXPENSE`.
-
-**Sample curl:**
 ```bash
 curl -X POST http://localhost:8080/api/records \
   -H "Authorization: Bearer <admin-token>" \
@@ -716,7 +429,9 @@ curl -X POST http://localhost:8080/api/records \
   -d '{"amount": 75000, "type": "INCOME", "category": "Salary", "date": "2025-01-15", "notes": "January salary"}'
 ```
 
-**Success response (201):**
+`date` and `notes` are optional. `type` must be `INCOME` or `EXPENSE`.
+
+**201 Created:**
 ```json
 {
   "id": "661f1a2b3c4d5e6f7a8b9c0d",
@@ -731,64 +446,33 @@ curl -X POST http://localhost:8080/api/records \
 }
 ```
 
-**Validation errors (400):**
+**400 — validation failure:**
 ```json
 {
   "amount": "Amount must be greater than zero",
-  "type": "Type is required (INCOME or EXPENSE)",
   "category": "Category is required"
 }
 ```
 
 ---
 
-#### `GET /api/records`
-
-List all non-deleted records.
+#### `GET /api/records` — List all records
 
 **Access:** ANALYST, ADMIN
 
-**Sample curl:**
 ```bash
-curl -X GET http://localhost:8080/api/records \
-  -H "Authorization: Bearer <analyst-or-admin-token>"
+curl http://localhost:8080/api/records \
+  -H "Authorization: Bearer <token>"
 ```
 
-**Success response (200):**
-```json
-[
-  {
-    "id": "661f1a2b3c4d5e6f7a8b9c0d",
-    "amount": 75000.0,
-    "type": "INCOME",
-    "category": "Salary",
-    "date": "2025-01-15",
-    "notes": "January salary",
-    "userId": "661e8a3f2c4b1a0012abcdef"
-  }
-]
-```
+**200 OK:** Array of all non-deleted records.
 
 ---
 
-#### `PUT /api/records/{id}`
+#### `PUT /api/records/{id}` — Update record
 
-Full replace update of a record. All fields except `id` and `userId` are replaced.
+**Access:** ADMIN — full field replacement (id and userId are preserved).
 
-**Access:** ADMIN only
-
-**Request body:**
-```json
-{
-  "amount": 4200,
-  "type": "EXPENSE",
-  "category": "Rent",
-  "date": "2025-02-01",
-  "notes": "February rent"
-}
-```
-
-**Sample curl:**
 ```bash
 curl -X PUT http://localhost:8080/api/records/661f1a2b3c4d5e6f7a8b9c0d \
   -H "Authorization: Bearer <admin-token>" \
@@ -796,106 +480,74 @@ curl -X PUT http://localhost:8080/api/records/661f1a2b3c4d5e6f7a8b9c0d \
   -d '{"amount": 4200, "type": "EXPENSE", "category": "Rent", "date": "2025-02-01"}'
 ```
 
-**Success response (200):** Updated record object.
+**200 OK:** Updated record object.
 
 ---
 
-#### `DELETE /api/records/{id}`
+#### `DELETE /api/records/{id}` — Soft delete record
 
-Soft delete a record. Sets `deleted = true`, does NOT remove from MongoDB.
+**Access:** ADMIN — sets `deleted = true`, never removes from MongoDB.
 
-**Access:** ADMIN only
-
-**Sample curl:**
 ```bash
 curl -X DELETE http://localhost:8080/api/records/661f1a2b3c4d5e6f7a8b9c0d \
   -H "Authorization: Bearer <admin-token>"
 ```
 
-**Success response:** `204 No Content` (empty body)
+**204 No Content.**
 
 ---
 
-#### `GET /api/records/filter`
+#### `GET /api/records/filter` — Filter records
 
-Filter records by any combination of type, category, date range, or keyword search. All params optional.
+**Access:** ANALYST, ADMIN — all params optional, all combinable.
 
-**Access:** ANALYST, ADMIN
+| Param | Type | Notes |
+|---|---|---|
+| `type` | `INCOME` \| `EXPENSE` | Filter by record type |
+| `category` | string | Exact match |
+| `from` | yyyy-MM-dd | Must be paired with `to` |
+| `to` | yyyy-MM-dd | Must be paired with `from` |
+| `search` | string | Case-insensitive match on category + notes. Overrides other params. |
 
-**Query parameters:**
-
-| Param | Type | Example | Notes |
-|---|---|---|---|
-| `type` | INCOME \| EXPENSE | `?type=INCOME` | Filter by record type |
-| `category` | string | `?category=Salary` | Exact match |
-| `from` | date (yyyy-MM-dd) | `?from=2025-01-01` | Requires `to` |
-| `to` | date (yyyy-MM-dd) | `?to=2025-01-31` | Requires `from` |
-| `search` | string | `?search=sal` | Case-insensitive partial match on category + notes. Overrides other params when present. |
-
-**Sample curl — income in January:**
 ```bash
-curl -X GET "http://localhost:8080/api/records/filter?type=INCOME&from=2025-01-01&to=2025-01-31" \
+# By type + date range
+curl "http://localhost:8080/api/records/filter?type=INCOME&from=2025-01-01&to=2025-01-31" \
+  -H "Authorization: Bearer <token>"
+
+# All three structured filters
+curl "http://localhost:8080/api/records/filter?type=EXPENSE&category=Rent&from=2025-02-01&to=2025-02-28" \
+  -H "Authorization: Bearer <token>"
+
+# Keyword search
+curl "http://localhost:8080/api/records/filter?search=sal" \
   -H "Authorization: Bearer <token>"
 ```
 
-**Sample curl — filter by category:**
-```bash
-curl -X GET "http://localhost:8080/api/records/filter?category=Rent" \
-  -H "Authorization: Bearer <token>"
-```
-
-**Sample curl — all three filters combined:**
-```bash
-curl -X GET "http://localhost:8080/api/records/filter?type=EXPENSE&category=Rent&from=2025-02-01&to=2025-02-28" \
-  -H "Authorization: Bearer <token>"
-```
-
-**Sample curl — keyword search:**
-```bash
-curl -X GET "http://localhost:8080/api/records/filter?search=sal" \
-  -H "Authorization: Bearer <token>"
-```
-
-**Success response (200):** Array of matching records.
-
-**Date validation error (400):**
+**400 — bad date range:**
 ```json
 { "error": "From date cannot be after To date" }
 ```
 
 ---
 
-#### `GET /api/records/paginated`
+#### `GET /api/records/paginated` — Paginated listing
 
-Paginated record listing, sorted newest first by date.
+**Access:** ANALYST, ADMIN — sorted newest first by date.
 
-**Access:** ANALYST, ADMIN
+| Param | Default |
+|---|---|
+| `page` | `0` |
+| `size` | `10` |
 
-**Query parameters:**
-
-| Param | Default | Example |
-|---|---|---|
-| `page` | `0` | `?page=1` |
-| `size` | `10` | `?size=5` |
-
-**Sample curl:**
 ```bash
-curl -X GET "http://localhost:8080/api/records/paginated?page=0&size=10" \
+curl "http://localhost:8080/api/records/paginated?page=0&size=10" \
   -H "Authorization: Bearer <token>"
 ```
 
-**Success response (200):**
+**200 OK:**
 ```json
 {
-  "data": [
-    {
-      "id": "661f1a2b3c4d5e6f7a8b9c0d",
-      "amount": 75000.0,
-      "type": "INCOME",
-      "category": "Salary",
-      "date": "2025-03-01"
-    }
-  ],
+  "data": [ { "id": "...", "amount": 75000.0, "type": "INCOME", "category": "Salary", "date": "2025-03-01" } ],
   "page": 0,
   "size": 10,
   "total": 42
@@ -906,21 +558,16 @@ curl -X GET "http://localhost:8080/api/records/paginated?page=0&size=10" \
 
 ### Dashboard
 
----
+#### `GET /api/dashboard/summary` — Full summary
 
-#### `GET /api/dashboard/summary`
+**Access:** All authenticated roles (VIEWER, ANALYST, ADMIN)
 
-Full aggregated dashboard summary. Accessible by all authenticated roles.
-
-**Access:** VIEWER, ANALYST, ADMIN
-
-**Sample curl:**
 ```bash
-curl -X GET http://localhost:8080/api/dashboard/summary \
+curl http://localhost:8080/api/dashboard/summary \
   -H "Authorization: Bearer <any-valid-token>"
 ```
 
-**Success response (200):**
+**200 OK:**
 ```json
 {
   "totalIncome": 150000.0,
@@ -932,13 +579,7 @@ curl -X GET http://localhost:8080/api/dashboard/summary \
     "Food": 3500.0
   },
   "recentActivity": [
-    {
-      "id": "661f1a2b3c4d5e6f7a8b9c0d",
-      "type": "INCOME",
-      "amount": 75000.0,
-      "category": "Salary",
-      "date": "2025-03-01"
-    }
+    { "id": "...", "type": "INCOME", "amount": 75000.0, "category": "Salary", "date": "2025-03-01" }
   ],
   "monthlyTrends": {
     "2025-01": 60000.0,
@@ -948,122 +589,177 @@ curl -X GET http://localhost:8080/api/dashboard/summary \
 }
 ```
 
-`monthlyTrends` values are net (income - expenses) per month, sorted chronologically. Negative values mean expenses exceeded income that month.
+`monthlyTrends` values are net per month (income − expenses). Negative means expenses exceeded income that month. Sorted chronologically via `TreeMap`.
 
 ---
 
 ### Error Responses
 
-All errors return a consistent JSON envelope:
+All errors return a consistent envelope:
 ```json
 { "error": "descriptive message" }
 ```
 
-Validation errors return a field-level map:
+Validation errors return a field map:
 ```json
-{
-  "amount": "Amount must be greater than zero",
-  "category": "Category is required"
-}
+{ "amount": "Amount must be greater than zero", "category": "Category is required" }
 ```
 
 | Status | When |
 |---|---|
-| `400 Bad Request` | Validation failure, duplicate email, invalid date range |
-| `401 Unauthorized` | Missing/invalid/expired token, inactive account |
-| `403 Forbidden` | Role not permitted for this action |
-| `404 Not Found` | User or record not found |
-| `429 Too Many Requests` | More than 100 requests from the same IP |
-| `500 Internal Server Error` | Unexpected error (fallback handler) |
+| 400 | Validation failure, duplicate email, invalid date range |
+| 401 | Missing/invalid token, inactive account |
+| 403 | Role not permitted for this action |
+| 404 | User or record not found |
+| 429 | More than 100 requests from the same IP |
+| 500 | Unexpected error (fallback handler) |
+
+---
+
+## Dashboard Aggregation
+
+Dashboard totals and trends are computed using **MongoDB's aggregation pipeline** — not Java streams. This means the database does the heavy lifting, not application memory.
+
+```
+DashboardService.getSummary()
+│
+├── getTotalIncome()
+│   match(type=INCOME, deleted=false) → group() → sum(amount)
+│
+├── getTotalExpense()
+│   match(type=EXPENSE, deleted=false) → group() → sum(amount)
+│
+├── netBalance = totalIncome - totalExpense
+│
+├── getCategoryTotals()
+│   match(deleted=false) → group(category) → sum(amount)
+│   Returns Map<String, Double>
+│
+├── getMonthlyTrends()
+│   project(year, month, amount, type)
+│   → group(year+month)
+│   → conditional sum: INCOME positive, EXPENSE negative
+│   Returns TreeMap<"YYYY-MM", Double>  ← TreeMap sorts chronologically
+│
+└── findTop5ByDeletedFalseOrderByDateDesc()
+    → recentActivity (last 5 records)
+```
+
+All aggregations use `deleted=false` — soft-deleted records never appear in dashboard numbers.
+
+---
+
+## Filter Routing
+
+`GET /api/records/filter` routes to one of 8 explicit Spring Data query methods depending on which params are present. No combination silently overrides another:
+
+```
+search present?
+  └── findByCategoryContainingIgnoreCaseOrNotesContainingIgnoreCaseAndDeletedFalse()
+
+type + category + dateRange → findByTypeAndCategoryAndDateBetweenAndDeletedFalse()
+type + dateRange            → findByTypeAndDateBetweenAndDeletedFalse()
+category + dateRange        → findByCategoryAndDateBetweenAndDeletedFalse()
+type + category             → findByTypeAndCategoryAndDeletedFalse()
+dateRange only              → findByDateBetweenAndDeletedFalse()
+type only                   → findByTypeAndDeletedFalse()
+category only               → findByCategoryAndDeletedFalse()
+no params                   → findByDeletedFalse()
+```
+
+Spring Data generates the actual MongoDB queries from these method names. Every method has `AndDeletedFalse` — soft-deleted records are always excluded.
 
 ---
 
 ## Unit Tests
 
-19 tests across two service classes. Run entirely without a live MongoDB — Mockito mocks all repositories.
+19 tests across two service classes. No live MongoDB needed — all repositories mocked with Mockito.
 
 ```bash
-# Run all tests
 ./mvnw test
-
-# Run specific test classes
-./mvnw test -Dtest="UserServiceTest,FinancialRecordServiceTest"
+# Expected: Tests run: 19, Failures: 0, Errors: 0
 ```
 
 ### UserServiceTest (9 tests)
 
-| Test | What it verifies |
+| Test | Verifies |
 |---|---|
-| `resolveCaller_missingHeader_throwsUnauthorized` | No auth context → 401 |
-| `resolveCaller_inactiveUser_throwsUnauthorized` | Inactive account → 401 |
-| `resolveCaller_activeUser_returnsUser` | Valid context → returns correct user |
-| `getAllUsers_callerIsViewer_throwsAccessDenied` | VIEWER on user list → 403 |
-| `getAllUsers_callerIsAdmin_returnsList` | ADMIN can list users |
-| `updateUser_adminCanChangeRole` | Admin changes VIEWER → ANALYST |
-| `updateUser_adminCanDeactivateUser` | Admin sets `active = false` |
-| `createUser_duplicateEmail_throwsIllegalArgument` | Duplicate email → 400 |
-| `createUser_newEmail_savesAndReturns` | Valid creation saves and returns user |
+| `resolveCaller_missingHeader` | No auth context → 401 |
+| `resolveCaller_inactiveUser` | Inactive account → 401 |
+| `resolveCaller_activeUser` | Valid context → correct user returned |
+| `getAllUsers_viewerCaller` | VIEWER on user list → 403 |
+| `getAllUsers_adminCaller` | ADMIN can list users |
+| `updateUser_changeRole` | Admin changes VIEWER → ANALYST |
+| `updateUser_deactivate` | Admin sets `active = false` |
+| `createUser_duplicateEmail` | Duplicate email → 400 |
+| `createUser_newEmail` | Valid creation saves and returns user |
 
 ### FinancialRecordServiceTest (10 tests)
 
-| Test | What it verifies |
+| Test | Verifies |
 |---|---|
-| `createRecord_viewerCannotCreate_throwsAccessDenied` | VIEWER cannot create → 403 |
-| `createRecord_analystCannotCreate_throwsAccessDenied` | ANALYST cannot create → 403 |
-| `createRecord_adminCanCreate_savesRecord` | ADMIN creates, `userId` set on record |
-| `getAllRecords_viewerCannotAccess_throwsAccessDenied` | VIEWER cannot list → 403 |
-| `getAllRecords_analystCanRead_returnsList` | ANALYST can list records |
-| `deleteRecord_recordNotFound_throwsNotFound` | Unknown ID → 404 |
-| `deleteRecord_adminWithValidId_setsDeletedTrue` | Soft delete sets `deleted=true`, never calls `deleteById` |
-| `filterRecords_typeAndDateRange_usesCombinedQuery` | type+dateRange routes to correct repository method |
-| `filterRecords_keywordSearch_usesCategoryKeyword` | `search` param uses keyword repository method |
-| `filterRecords_noParams_returnsAll` | No params → `findByDeletedFalse()` |
-| `filterRecords_viewer_throwsAccessDenied` | VIEWER on filter → 403 |
-| `getPaginated_viewer_throwsAccessDenied` | VIEWER on paginated → 403 |
+| `createRecord_viewerCannot` | VIEWER create → 403 |
+| `createRecord_analystCannot` | ANALYST create → 403 |
+| `createRecord_adminCan` | ADMIN creates, `userId` tagged on record |
+| `getAllRecords_viewerCannot` | VIEWER list → 403 |
+| `getAllRecords_analystCan` | ANALYST can list |
+| `deleteRecord_notFound` | Unknown ID → 404 |
+| `deleteRecord_setsDeletedTrue` | Soft delete sets flag, never calls `deleteById` |
+| `filterRecords_typeAndDateRange` | Routes to correct combined repository method |
+| `filterRecords_keywordSearch` | `search` param uses keyword method |
+| `filterRecords_noParams` | No params → `findByDeletedFalse()` |
+| `filterRecords_viewerCannot` | VIEWER on filter → 403 |
+| `getPaginated_viewerCannot` | VIEWER on paginated → 403 |
 
 ---
 
-## Optional Enhancements Implemented
+## Features Coverage
 
-### JWT Authentication
-Full token lifecycle: BCrypt password hashing at registration, HMAC-SHA256 signed JWT at login, token validation on every request via `AuthFilter`, role extracted from token claims and injected into Spring `SecurityContext`.
+### Core Requirements
 
-### Pagination
-`GET /api/records/paginated?page=0&size=10` returns a `PageResponse<FinancialRecord>` with `data`, `page`, `size`, and `total` count. Sorted newest-first by date using Spring Data's `PageRequest` with `Sort.Direction.DESC`.
+| Requirement | Status |
+|---|:---:|
+| User creation and management | ✓ |
+| Role assignment (VIEWER / ANALYST / ADMIN) | ✓ |
+| Active / inactive user status | ✓ |
+| Role-based access restrictions | ✓ |
+| Financial record CRUD | ✓ |
+| Record filtering (date, category, type) | ✓ |
+| Dashboard summary APIs | ✓ |
+| Input validation + error responses | ✓ |
+| Correct HTTP status codes | ✓ |
+| Data persistence (MongoDB) | ✓ |
 
-### Keyword Search
-`GET /api/records/filter?search=sal` runs a case-insensitive partial match against both `category` and `notes` fields using MongoDB's regex behavior via Spring Data method naming.
+### Optional Enhancements
 
-### Soft Delete
-Records are never removed from MongoDB. `DELETE /api/records/{id}` sets `deleted = true`. All query methods include `AndDeletedFalse` to automatically exclude them. Historical data is preserved for audit purposes.
-
-### Rate Limiting
-`AuthFilter` maintains a `ConcurrentHashMap<IP, count>`. Any IP exceeding 100 requests receives `HTTP 429` immediately, before authentication or routing. This is in-memory and resets on server restart.
-
-### Unit Tests
-19 tests covering all service-layer access control paths, edge cases (inactive users, not-found records, soft delete verification), and filter routing logic. No live database required — all repositories are mocked with Mockito.
-
-### Swagger / OpenAPI
-SpringDoc OpenAPI integrated via `springdoc-openapi-starter-webmvc-ui`. Available at `http://localhost:8080/swagger-ui.html` when the server is running. Provides interactive API explorer where you can test all endpoints directly from the browser.
+| Enhancement | Status |
+|---|:---:|
+| JWT authentication (HMAC-SHA256 + BCrypt) | ✓ |
+| Pagination with total count | ✓ |
+| Keyword search on category + notes | ✓ |
+| Soft delete (audit-safe) | ✓ |
+| Rate limiting (100 req/IP, in-memory) | ✓ |
+| Unit tests (19, no live DB needed) | ✓ |
+| Swagger UI at `/swagger-ui.html` | ✓ |
 
 ---
 
 ## Assumptions & Tradeoffs
 
-**JWT secret is hardcoded for assessment** — The HMAC key lives in `JwtUtil.java`. In production this would be read from an environment variable or secrets manager. Tokens have no expiry set — production would use `.setExpiration(new Date(System.currentTimeMillis() + 86400000))`.
+**JWT secret is hardcoded** — lives in `JwtUtil.java` for assessment simplicity. Production would read from an environment variable. Tokens have no expiry set; production would add `.setExpiration(...)`.
 
-**Role checks at two layers** — `@PreAuthorize` on controllers + explicit `assertAdmin()`/`assertNotViewer()` in services. The redundancy is intentional: the service layer ensures enforcement even if the controller annotation is misconfigured or the service is called from another internal service.
+**Dual-layer role enforcement** — `@PreAuthorize` on controllers + `assertAdmin()`/`assertNotViewer()` in services. Redundancy is intentional: the service layer guarantees enforcement even if called internally or if a controller annotation is misconfigured.
 
-**Soft delete as default** — Records are never permanently removed. Converting to hard delete later requires removing the `deleted` flag from the entity and renaming the repository methods.
+**MongoDB aggregation pipeline for dashboard** — totals and trends are computed in the database, not in Java memory. This scales correctly for large datasets.
 
-**8 explicit filter methods instead of dynamic queries** — Every param combination is an explicit, named repository method. This makes it impossible for one filter to silently override another. The tradeoff is verbosity; the benefit is complete predictability.
+**8 explicit filter methods** — every param combination is a named repository method. Verbose but completely predictable — one filter can never silently override another.
 
-**MongoDB aggregation for dashboard** — Upgraded from Java stream aggregation to MongoDB's aggregation pipeline. This means totals and trends are computed in the database, not in application memory, which scales much better for large datasets.
+**Unique email at two levels** — MongoDB unique index prevents DB-level duplicates; `existsByEmail()` in the service returns a clean 400 rather than a raw `DuplicateKeyException`.
 
-**Unique email enforced at two levels** — MongoDB unique index prevents duplicates at the DB level; `existsByEmail()` in the service returns a clean `400` response rather than a raw `DuplicateKeyException` from MongoDB.
+**In-memory rate limiting** — `ConcurrentHashMap<IP, count>` in `AuthFilter`. Resets on restart. Production would use Redis for distributed, persistent limiting.
 
-**In-memory rate limiting** — Per-IP counter in `AuthFilter` using `ConcurrentHashMap`. Resets on restart. Production would use Redis for persistent, distributed rate limiting.
+**Soft delete by default** — records are never removed. Every query carries `AndDeletedFalse`. Historical data stays in MongoDB for auditing. Converting to hard delete would just mean removing the flag and renaming the query methods.
 
-**`POST /api/users` is public** — Necessary to bootstrap the first admin account. All subsequent user management (listing, updating) requires an admin JWT.
+**`date` optional on records** — covers entries like adjustments with no meaningful date. These count in totals but are excluded from `monthlyTrends` since there is no month to group by.
 
-**`date` optional on records** — Covers entries like adjustments or opening balances with no specific date. These records count in income/expense totals but are excluded from `monthlyTrends` since there's no date to group by.
+**`POST /api/users` is public** — necessary to bootstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.
