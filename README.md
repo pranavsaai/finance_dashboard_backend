@@ -144,8 +144,8 @@ POST /api/auth/login   { "email": "...", "password": "..." }
   JwtUtil.generateToken(userId, role)
         │
         ▼
-  JWT: { sub: "<mongoUserId>", role: "ADMIN", iat: ... }
-  Signed with HMAC-SHA256
+  JWT: { sub: "<mongoUserId>", role: "ADMIN", iat: ..., exp: ... }
+  Signed with HMAC-SHA256, expires in 24 hours
         │
         ▼
   Returns raw JWT string
@@ -160,6 +160,7 @@ public String generateToken(String userId, String role) {
             .setSubject(userId)
             .claim("role", role)
             .setIssuedAt(new Date())
+            .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
             .signWith(Keys.hmacShaKeyFor(SECRET.getBytes()))
             .compact();
 }
@@ -231,14 +232,14 @@ public User resolveCaller() {
 | `amount` | Double | `@NotNull`, `@Positive` |
 | `type` | INCOME \| EXPENSE | `@NotNull` |
 | `category` | String | `@NotBlank` |
-| `date` | LocalDate | Optional (yyyy-MM-dd) |
+| `date` | LocalDateTime | `@NotNull` (yyyy-MM-dd'T'HH:mm:ss) |
 | `notes` | String | Optional |
 | `userId` | String | Admin ID who created the record |
 | `deleted` | boolean | Default `false`, `@JsonIgnore` — hidden from responses |
 | `createdAt` | LocalDateTime | Spring Data `@CreatedDate` |
 | `updatedAt` | LocalDateTime | Spring Data `@LastModifiedDate` |
 
-`date` is optional — entries like adjustments may have no date. Dateless records count in totals but are excluded from `monthlyTrends`.
+`date` is required (`@NotNull`) and stored as `LocalDateTime` (includes both date and time components). The filter params `from` / `to` perform range queries against this field; supply them as ISO-8601 datetime strings (e.g. `2025-01-01T00:00:00` / `2025-01-31T23:59:59`).
 
 ---
 
@@ -265,8 +266,9 @@ public User resolveCaller() {
 git clone https://github.com/pranavsaai/finance_dashboard_backend.git
 cd finance_dashboard_backend
 
-# 2. Set MongoDB URI (defaults to localhost if not set)
+# 2. Set required environment variables
 export MONGO_URI_FINANCE=mongodb://localhost:27017/finance_db
+export JWT_SECRET_FINANCE=your-secret-key-minimum-32-chars
 
 # Atlas:
 # export MONGO_URI_FINANCE=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/finance_db
@@ -280,8 +282,10 @@ export MONGO_URI_FINANCE=mongodb://localhost:27017/finance_db
 
 **application.properties:**
 ```properties
-spring.data.mongodb.uri=${MONGO_URI_FINANCE:mongodb://localhost:27017/finance_db}
+spring.data.mongodb.uri=${MONGO_URI_FINANCE}
 spring.application.name=finance
+jwt.secret=${JWT_SECRET_FINANCE}
+jwt.expiration=86400000
 springdoc.swagger-ui.path=/swagger-ui.html
 ```
 
@@ -426,10 +430,10 @@ curl -X PATCH http://localhost:8080/api/users/661e8b4a3d5c2b1123ghijkl \
 curl -X POST http://localhost:8080/api/records \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
-  -d '{"amount": 75000, "type": "INCOME", "category": "Salary", "date": "2025-01-15", "notes": "January salary"}'
+  -d '{"amount": 75000, "type": "INCOME", "category": "Salary", "date": "2025-01-15T00:00:00", "notes": "January salary"}'
 ```
 
-`date` and `notes` are optional. `type` must be `INCOME` or `EXPENSE`.
+`notes` is optional. `date` is required as an ISO-8601 datetime string. `type` must be `INCOME` or `EXPENSE`.
 
 **201 Created:**
 ```json
@@ -438,7 +442,7 @@ curl -X POST http://localhost:8080/api/records \
   "amount": 75000.0,
   "type": "INCOME",
   "category": "Salary",
-  "date": "2025-01-15",
+  "date": "2025-01-15T00:00:00",
   "notes": "January salary",
   "userId": "661e8a3f2c4b1a0012abcdef",
   "createdAt": "2025-01-15T14:00:00",
@@ -477,7 +481,7 @@ curl http://localhost:8080/api/records \
 curl -X PUT http://localhost:8080/api/records/661f1a2b3c4d5e6f7a8b9c0d \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
-  -d '{"amount": 4200, "type": "EXPENSE", "category": "Rent", "date": "2025-02-01"}'
+  -d '{"amount": 4200, "type": "EXPENSE", "category": "Rent", "date": "2025-02-01T00:00:00"}'
 ```
 
 **200 OK:** Updated record object.
@@ -505,17 +509,17 @@ curl -X DELETE http://localhost:8080/api/records/661f1a2b3c4d5e6f7a8b9c0d \
 |---|---|---|
 | `type` | `INCOME` \| `EXPENSE` | Filter by record type |
 | `category` | string | Exact match |
-| `from` | yyyy-MM-dd | Must be paired with `to` |
-| `to` | yyyy-MM-dd | Must be paired with `from` |
+| `from` | ISO-8601 datetime (e.g. `2025-01-01T00:00:00`) | Must be paired with `to` |
+| `to` | ISO-8601 datetime (e.g. `2025-01-31T23:59:59`) | Must be paired with `from` |
 | `search` | string | Case-insensitive match on category + notes. Overrides other params. |
 
 ```bash
 # By type + date range
-curl "http://localhost:8080/api/records/filter?type=INCOME&from=2025-01-01&to=2025-01-31" \
+curl "http://localhost:8080/api/records/filter?type=INCOME&from=2025-01-01T00:00:00&to=2025-01-31T23:59:59" \
   -H "Authorization: Bearer <token>"
 
 # All three structured filters
-curl "http://localhost:8080/api/records/filter?type=EXPENSE&category=Rent&from=2025-02-01&to=2025-02-28" \
+curl "http://localhost:8080/api/records/filter?type=EXPENSE&category=Rent&from=2025-02-01T00:00:00&to=2025-02-28T23:59:59" \
   -H "Authorization: Bearer <token>"
 
 # Keyword search
@@ -547,7 +551,7 @@ curl "http://localhost:8080/api/records/paginated?page=0&size=10" \
 **200 OK:**
 ```json
 {
-  "data": [ { "id": "...", "amount": 75000.0, "type": "INCOME", "category": "Salary", "date": "2025-03-01" } ],
+  "data": [ { "id": "...", "amount": 75000.0, "type": "INCOME", "category": "Salary", "date": "2025-03-01T00:00:00" } ],
   "page": 0,
   "size": 10,
   "total": 42
@@ -579,7 +583,7 @@ curl http://localhost:8080/api/dashboard/summary \
     "Food": 3500.0
   },
   "recentActivity": [
-    { "id": "...", "type": "INCOME", "amount": 75000.0, "category": "Salary", "date": "2025-03-01" }
+    { "id": "...", "type": "INCOME", "amount": 75000.0, "category": "Salary", "date": "2025-03-01T00:00:00" }
   ],
   "monthlyTrends": {
     "2025-01": 60000.0,
@@ -589,7 +593,7 @@ curl http://localhost:8080/api/dashboard/summary \
 }
 ```
 
-`monthlyTrends` values are net per month (income − expenses). Negative means expenses exceeded income that month. Sorted chronologically via `TreeMap`.
+`monthlyTrends` values are net per month (income − expenses). Negative means expenses exceeded income that month. Sorted chronologically.
 
 ---
 
@@ -607,12 +611,12 @@ Validation errors return a field map:
 
 | Status | When |
 |---|---|
-| 400 | Validation failure, duplicate email, invalid date range |
+| 400 | Validation failure, duplicate email, invalid password, invalid date range |
 | 401 | Missing/invalid token, inactive account |
 | 403 | Role not permitted for this action |
 | 404 | User or record not found |
 | 429 | More than 100 requests from the same IP |
-| 500 | Unexpected error (fallback handler) |
+| 500 | Unexpected server error (fallback handler) |
 
 ---
 
@@ -639,7 +643,7 @@ DashboardService.getSummary()
 │   project(year, month, amount, type)
 │   → group(year+month)
 │   → conditional sum: INCOME positive, EXPENSE negative
-│   Returns TreeMap<"YYYY-MM", Double>  ← TreeMap sorts chronologically
+│   Returns sorted Map<"YYYY-MM", Double>
 │
 └── findTop5ByDeletedFalseOrderByDateDesc()
     → recentActivity (last 5 records)
@@ -655,7 +659,7 @@ All aggregations use `deleted=false` — soft-deleted records never appear in da
 
 ```
 search present?
-  └── findByCategoryContainingIgnoreCaseOrNotesContainingIgnoreCaseAndDeletedFalse()
+  └── search(keyword)  ← regex on category + notes, case-insensitive
 
 type + category + dateRange → findByTypeAndCategoryAndDateBetweenAndDeletedFalse()
 type + dateRange            → findByTypeAndDateBetweenAndDeletedFalse()
@@ -667,7 +671,7 @@ category only               → findByCategoryAndDeletedFalse()
 no params                   → findByDeletedFalse()
 ```
 
-Spring Data generates the actual MongoDB queries from these method names. Every method has `AndDeletedFalse` — soft-deleted records are always excluded.
+Spring Data generates the actual MongoDB queries from these method names. Every method has `AndDeletedFalse` — soft-deleted records are always excluded. Date params (`from` / `to`) are `LocalDateTime`, matching the `date` field type on the entity.
 
 ---
 
@@ -746,7 +750,7 @@ Spring Data generates the actual MongoDB queries from these method names. Every 
 
 ## Assumptions & Tradeoffs
 
-**JWT secret is secured** — lives in `JwtUtil.java` for assessment simplicity. Production reads from an environment variable. Tokens have expiry set by adding `.setExpiration(...)`.
+**JWT secret from environment** — `JWT_SECRET_FINANCE` is read from an environment variable at runtime. Token expiry is set to 24 hours (`jwt.expiration=86400000`).
 
 **Dual-layer role enforcement** — `@PreAuthorize` on controllers + `assertAdmin()`/`assertNotViewer()` in services. Redundancy is intentional: the service layer guarantees enforcement even if called internally or if a controller annotation is misconfigured.
 
@@ -760,6 +764,6 @@ Spring Data generates the actual MongoDB queries from these method names. Every 
 
 **Soft delete by default** — records are never removed. Every query carries `AndDeletedFalse`. Historical data stays in MongoDB for auditing. Converting to hard delete would just mean removing the flag and renaming the query methods.
 
-**`date` optional on records** — covers entries like adjustments with no meaningful date. These count in totals but are excluded from `monthlyTrends` since there is no month to group by.
+**`date` required on records** — the `date` field is `LocalDateTime` and annotated `@NotNull`. It carries both date and time components, consistent with the `LocalDateTime` type used by `createdAt` and `updatedAt`. Filter params `from` / `to` are likewise `LocalDateTime` range boundaries.
 
-**`POST /api/users` is public** — necessary to bootstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.tstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.
+**`POST /api/users` is public** — necessary to bootstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.
