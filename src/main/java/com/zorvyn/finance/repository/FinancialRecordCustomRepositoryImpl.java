@@ -21,7 +21,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group().sum("amount").as("total")
         );
 
-        Map result = mongoTemplate.aggregate(agg, "financialRecord", Map.class)
+        Map result = mongoTemplate.aggregate(agg, "records", Map.class)
                 .getUniqueMappedResult();
 
         return result != null ? ((Number) result.get("total")).doubleValue() : 0;
@@ -34,7 +34,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group().sum("amount").as("total")
         );
 
-        Map result = mongoTemplate.aggregate(agg, "financialRecord", Map.class)
+        Map result = mongoTemplate.aggregate(agg, "records", Map.class)
                 .getUniqueMappedResult();
 
         return result != null ? ((Number) result.get("total")).doubleValue() : 0;
@@ -48,7 +48,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group("category").sum("amount").as("total")
         );
 
-        List<Map> results = mongoTemplate.aggregate(agg, "financialRecord", Map.class)
+        List<Map> results = mongoTemplate.aggregate(agg, "records", Map.class)
                 .getMappedResults();
 
         Map<String, Double> map = new HashMap<>();
@@ -80,7 +80,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                         ).as("total")
         );
 
-        List<Map> results = mongoTemplate.aggregate(agg, "financialRecord", Map.class)
+        List<Map> results = mongoTemplate.aggregate(agg, "records", Map.class)
                 .getMappedResults();
 
         Map<String, Double> map = new TreeMap<>();
