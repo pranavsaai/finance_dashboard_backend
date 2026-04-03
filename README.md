@@ -762,4 +762,4 @@ Spring Data generates the actual MongoDB queries from these method names. Every 
 
 **`date` optional on records** — covers entries like adjustments with no meaningful date. These count in totals but are excluded from `monthlyTrends` since there is no month to group by.
 
-**`POST /api/users` is public** — necessary to bootstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.
+**`POST /api/users` is public** — necessary to bootstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.tstrap the first admin account without a chicken-and-egg problem. All subsequent user management requires an admin token.
