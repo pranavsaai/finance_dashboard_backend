@@ -746,7 +746,7 @@ Spring Data generates the actual MongoDB queries from these method names. Every 
 
 ## Assumptions & Tradeoffs
 
-**JWT secret is hardcoded** — lives in `JwtUtil.java` for assessment simplicity. Production would read from an environment variable. Tokens have no expiry set; production would add `.setExpiration(...)`.
+**JWT secret is secured** — lives in `JwtUtil.java` for assessment simplicity. Production reads from an environment variable. Tokens have expiry set by adding `.setExpiration(...)`.
 
 **Dual-layer role enforcement** — `@PreAuthorize` on controllers + `assertAdmin()`/`assertNotViewer()` in services. Redundancy is intentional: the service layer guarantees enforcement even if called internally or if a controller annotation is misconfigured.
 
