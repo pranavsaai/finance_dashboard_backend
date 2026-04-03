@@ -43,4 +43,23 @@ public class JwtUtil {
                 .getBody()
                 .get("role", String.class);
     }
+    public String generateRefreshToken(String userId) {
+        return Jwts.builder()
+                .setSubject(userId)
+                .claim("type", "refresh")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + (7 * 24 * 60 * 60 * 1000L))) // 7 days
+                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes()))
+                .compact();
+    }
+    public boolean isRefreshToken(String token) {
+        String type = Jwts.parserBuilder()
+                .setSigningKey(SECRET.getBytes())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .get("type", String.class);
+
+        return "refresh".equals(type);
+    }
 }

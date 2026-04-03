@@ -22,7 +22,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group().sum("amount").as("total")
         );
 
-        Map result = mongoTemplate.aggregate(agg, "records", Map.class)
+        Map<String, Object> result = mongoTemplate.aggregate(agg, "records", Map.class)
                 .getUniqueMappedResult();
 
         return result != null ? ((Number) result.get("total")).doubleValue() : 0;
@@ -35,7 +35,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group().sum("amount").as("total")
         );
 
-        Map result = mongoTemplate.aggregate(agg, "records", Map.class)
+        Map<String, Object> result = mongoTemplate.aggregate(agg, "records", Map.class)
                 .getUniqueMappedResult();
 
         return result != null ? ((Number) result.get("total")).doubleValue() : 0;
@@ -49,50 +49,62 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group("category").sum("amount").as("total")
         );
 
-        List<Map> results = mongoTemplate.aggregate(agg, "records", Map.class)
-                .getMappedResults();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> results = (List<Map<String, Object>>)(List<?>) 
+                mongoTemplate.aggregate(agg, "records", Map.class).getMappedResults();
 
         Map<String, Double> map = new HashMap<>();
 
-        for (Map r : results) {
+        for (Map<String, Object> r : results) {
             map.put((String) r.get("_id"), ((Number) r.get("total")).doubleValue());
         }
 
         return map;
     }
 
-        @Override
-        public Map<String, Double> getMonthlyTrends() {
-                Aggregation agg = Aggregation.newAggregation(
+    @Override
+    public Map<String, Double> getMonthlyTrends() {
+
+        Aggregation agg = Aggregation.newAggregation(
 
                 Aggregation.match(Criteria.where("deleted").is(false)),
 
                 Aggregation.project()
-                        .and(DateOperators.DateToString.dateOf("date").toString("%Y").withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("year")
-                        .and(DateOperators.DateToString.dateOf("date").toString("%m").withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("month")
+                        .and(DateOperators.DateToString.dateOf("date").toString("%Y")
+                                .withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("year")
+                        .and(DateOperators.DateToString.dateOf("date").toString("%m")
+                                .withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("month")
                         .and("amount").as("amount")
                         .and("type").as("type"),
 
-                Aggregation.group("year", "month").sum(ConditionalOperators.when(Criteria.where("type").is("INCOME")).thenValueOf("amount").otherwise(ArithmeticOperators.Multiply.valueOf("amount").multiplyBy(-1))).as("total"),
+                Aggregation.group("year", "month")
+                        .sum(ConditionalOperators.when(Criteria.where("type").is("INCOME"))
+                                .thenValueOf("amount")
+                                .otherwise(ArithmeticOperators.Multiply.valueOf("amount").multiplyBy(-1)))
+                        .as("total"),
 
                 Aggregation.sort(Sort.by("year").ascending().and(Sort.by("month").ascending()))
         );
 
-                List<Map> results = mongoTemplate.aggregate(agg, "records", Map.class)
-                        .getMappedResults();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> results = (List<Map<String, Object>>)(List<?>) 
+                mongoTemplate.aggregate(agg, "records", Map.class).getMappedResults();
 
-                Map<String, Double> map = new LinkedHashMap<>();
+        Map<String, Double> map = new LinkedHashMap<>();
 
-                for (Map r : results) {
-                        Map id = (Map) r.get("_id");
+        for (Map<String, Object> r : results) {
 
-                        String year = (String) id.get("year");
-                        String month = (String) id.get("month");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> id = (Map<String, Object>) r.get("_id");
 
-                        String key = year + "-" + month;
+            String year = (String) id.get("year");
+            String month = (String) id.get("month");
 
-                        map.put(key, ((Number) r.get("total")).doubleValue());
-                }
-                return map;
+            String key = year + "-" + month;
+
+            map.put(key, ((Number) r.get("total")).doubleValue());
         }
+
+        return map;
+    }
 }
