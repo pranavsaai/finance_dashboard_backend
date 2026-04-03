@@ -375,14 +375,14 @@ All fields in `DashboardSummary` are computed via MongoDB aggregation pipelines 
 
 | Action | VIEWER | ANALYST | ADMIN |
 |---|---|---|---|
-| Login | ✅ | ✅ | ✅ |
-| View dashboard summary | ✅ | ✅ | ✅ |
-| View/filter records | ❌ | ✅ | ✅ |
-| Paginated records | ❌ | ✅ | ✅ |
-| Create records | ❌ | ❌ | ✅ |
-| Update records | ❌ | ❌ | ✅ |
-| Delete records | ❌ | ❌ | ✅ |
-| Manage users | ❌ | ❌ | ✅ |
+| Login | ALLOWED | ALLOWED | ALLOWED |
+| View dashboard summary | ALLOWED | ALLOWED | ALLOWED |
+| View/filter records | NOT ALLOWED | ALLOWED | ALLOWED |
+| Paginated records | NOT ALLOWED | ALLOWED | ALLOWED |
+| Create records | NOT ALLOWED | NOT ALLOWED | ALLOWED |
+| Update records | NOT ALLOWED | NOT ALLOWED | ALLOWED |
+| Delete records | NOT ALLOWED | NOT ALLOWED | ALLOWED |
+| Manage users | NOT ALLOWED | NOT ALLOWED | ALLOWED |
 
 Implementation method: `@PreAuthorize` annotations at the controller layer + manual `assertAdmin()` / `assertNotViewer()` in service methods.
 
@@ -413,15 +413,15 @@ The two patterns are combined via interface composition: `FinancialRecordReposit
 
 ## Optional Enhancements — How Each Was Implemented
 
-### ✅ JWT Authentication
+### A1.) JWT Authentication
 
 Full token-based authentication using the JJWT library. On login, a signed JWT is returned containing `userId` and `role` as claims. The `AuthFilter` validates and parses this token on every request, populating both the Spring `SecurityContext` and the `AuthContext` ThreadLocal.
 
-### ✅ Pagination
+### 2.) Pagination
 
 `GET /api/records/paginated?page=0&size=10` returns a `PageResponse<FinancialRecord>` with `data`, `page`, `size`, and `total` fields. Uses Spring Data's `Pageable` interface with descending sort by date. Input validation rejects negative page or zero size with a 400 error.
 
-### ✅ Search
+### 3.) Search
 
 `GET /api/records/filter?search=salary` performs a case-insensitive MongoDB regex search across both the `category` and `notes` fields. Implemented as a `@Query` annotation on the repository interface:
 ```
@@ -429,17 +429,17 @@ Full token-based authentication using the JJWT library. On login, a signed JWT i
 ```
 When `search` is provided, it takes priority over all other filter parameters.
 
-### ✅ Soft Delete
+### 3.) Soft Delete
 
 Records are never physically removed from the database. `DELETE /api/records/{id}` sets `deleted = true` and saves the record. All queries and aggregations explicitly filter `deleted: false`. The `deleted` field is annotated with `@JsonIgnore` so it is invisible in every API response.
 
-### ✅ Rate Limiting
+### 4.) Rate Limiting
 
 Implemented directly in `AuthFilter` using a `ConcurrentHashMap<String, Integer>` keyed by client IP address. Once a single IP exceeds 100 requests, subsequent requests receive HTTP 429 with the message `Too many requests`.
 
 **Current behavior and known limitation**: The counter resets on application restart and is stored in memory only — it does not persist across instances. This is sufficient for single-instance local development. A production-grade implementation would use Redis with a sliding window or token bucket algorithm. This is documented as a planned improvement.
 
-### ✅ Unit Tests
+### 5.) Unit Tests
 
 Service-layer unit tests are written using JUnit 5 + Mockito + AssertJ covering:
 
@@ -813,18 +813,41 @@ Returns aggregated financial summary. Accessible by all roles (VIEWER, ANALYST, 
 ## Known Tradeoffs and Future Improvements
 
 ### Rate Limiting (In-Memory)
-The current implementation uses a `ConcurrentHashMap<IP, count>` in `AuthFilter`. This resets on restart and does not work in a multi-instance deployment.
+The current implementation uses a ConcurrentHashMap<IP, count> in AuthFilter. This resets on restart and does not work in a multi-instance deployment.
 
-**Planned improvement**: Replace with Redis-backed rate limiting using a sliding window algorithm. A library like Bucket4j with a Redis backend would support distributed deployments and configurable time windows (e.g. 100 requests per minute per IP, not unbounded).
+**Planned improvement**: Replace with Redis-backed rate limiting using a sliding window algorithm. A library like Bucket4j with a Redis backend would support distributed deployments and configurable time windows (for example: 100 requests per minute per IP, not unbounded).
 
-### No Swagger / OpenAPI Docs
-API documentation is currently in this README. Adding `springdoc-openapi-starter-webmvc-ui` would provide an interactive Swagger UI at `/swagger-ui.html` automatically generated from the codebase, which would make integration easier for frontend developers.
+### Bootstrap User Creation (Public Endpoint)
+The /api/users endpoint is intentionally left permitAll() to allow initial system bootstrapping (first admin creation). After the first user is created, access is restricted via application-level checks.
 
-### Filter + Search Exclusivity
-When a `search` keyword is provided to `GET /api/records/filter`, other filter params (type, category, date range) are ignored. This was a deliberate simplicity tradeoff. A future improvement would allow search to act as an additional constraint alongside other filters by integrating the keyword condition into the existing query combination matrix.
+**Planned improvement**: Automatically disable public access after the first admin is created or introduce invite-based user onboarding to enforce controlled role assignment.
 
-### No Refresh Token
-The current JWT implementation issues 24-hour access tokens with no refresh mechanism. A production system should include a short-lived access token (15 minutes) paired with a long-lived refresh token stored securely, with a `POST /api/auth/refresh` endpoint.
+### Service-Level + Annotation-Based Security (Dual Enforcement)
+Role-based access is enforced both via @PreAuthorize annotations and service-layer checks. While this provides defense-in-depth, it introduces slight duplication.
 
-### Timezone Assumption in Monthly Trends
-The `getMonthlyTrends()` aggregation uses `Asia/Kolkata` as the timezone for date extraction. This should be configurable via an application property rather than hardcoded.
+**Planned improvement**: Consolidate security rules into a centralized policy layer or rely more on Spring Security expressions while keeping minimal service-level safeguards.
+
+### Search and Filter Combination Logic
+When a search keyword is provided to GET /api/records/filter, it overrides other filters (type, category, date range) for simplicity.
+
+**Planned improvement**: Extend query logic to combine search with structured filters, allowing more flexible querying (e.g. keyword + date range + type).
+
+### Date Handling Normalization
+The system stores dates as LocalDateTime while accepting filter inputs as LocalDate. These are normalized internally to full-day ranges.
+
+**Planned improvement**: Introduce a dedicated query DTO or utility layer to standardize date handling and improve readability and reusability.
+
+### Pagination Validation and Limits
+Pagination parameters (page, size) are validated but not capped.
+
+**Planned improvement**: Enforce maximum page size limits (e.g. 100 records) to prevent excessive data retrieval and improve performance under load.
+
+### Soft Delete Without Archival Strategy
+Records are soft-deleted using a deleted flag but remain in the primary collection.
+
+**Planned improvement**: Move deleted records to an archive collection or implement TTL/index-based cleanup for long-term data management.
+
+### Logging and Monitoring
+Current logging is minimal and primarily console-based.
+
+**Planned improvement**: Introduce structured logging (e.g. JSON logs) and integrate with monitoring tools like ELK stack or Prometheus/Grafana for better observability in production.
