@@ -88,10 +88,10 @@ public class FinancialRecordService {
             throw new IllegalArgumentException("From date cannot be after To date");
         }
 
-        // keyword search takes priority when provided
+        // keyword search has the highest priority - if provided, other filters are ignored
         if (search != null && !search.isBlank()) {
             String keyword = search.trim();
-            return recordRepository.findByCategoryContainingIgnoreCaseOrNotesContainingIgnoreCaseAndDeletedFalse(keyword, keyword);
+            return recordRepository.search(keyword);
         }
 
         boolean hasType      = type != null;

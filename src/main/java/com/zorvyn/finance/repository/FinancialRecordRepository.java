@@ -5,6 +5,7 @@ import com.zorvyn.finance.entity.RecordType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -21,10 +22,11 @@ public interface FinancialRecordRepository extends MongoRepository<FinancialReco
     List<FinancialRecord> findByTypeAndDateBetweenAndDeletedFalse(RecordType type, LocalDate from, LocalDate to);
     List<FinancialRecord> findByCategoryAndDateBetweenAndDeletedFalse(String category, LocalDate from, LocalDate to);
     List<FinancialRecord> findByTypeAndCategoryAndDateBetweenAndDeletedFalse(RecordType type, String category, LocalDate from, LocalDate to);
-    List<FinancialRecord> findByCategoryContainingIgnoreCaseOrNotesContainingIgnoreCaseAndDeletedFalse(String category,String notes);
-    List<FinancialRecord> findByCategoryContainingIgnoreCaseAndDeletedFalse(String keyword);
-
+    
     Page<FinancialRecord> findByDeletedFalse(Pageable pageable);
 
     List<FinancialRecord> findTop5ByDeletedFalseOrderByDateDesc();
+    
+    @Query("{ deleted: false, $or: [ { category: { $regex: ?0, $options: 'i' } }, { notes: { $regex: ?0, $options: 'i' } } ] }")
+    List<FinancialRecord> search(String keyword);
 }

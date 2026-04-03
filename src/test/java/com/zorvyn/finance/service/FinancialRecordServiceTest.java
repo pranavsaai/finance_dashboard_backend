@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -152,14 +153,16 @@ class FinancialRecordServiceTest {
     }
 
     @Test
-    void filterRecords_keywordSearch_usesCategoryKeyword() {
+    void filterRecords_keywordSearch_usesSearchMethod() {
         when(userService.resolveCaller()).thenReturn(analystUser);
-        when(recordRepository.findByCategoryContainingIgnoreCaseAndDeletedFalse("sal"))
-                .thenReturn(List.of(sampleRecord));
+        when(recordRepository.search("sal")).thenReturn(List.of(sampleRecord));
 
-        List<FinancialRecord> result = recordService.filterRecords(null, null, null, null, "sal");
+        List<FinancialRecord> result =
+                recordService.filterRecords(null, null, null, null, "sal");
+
         assertThat(result).hasSize(1);
-        verify(recordRepository).findByCategoryContainingIgnoreCaseAndDeletedFalse("sal");
+
+        verify(recordRepository).search("sal");
     }
 
     @Test
