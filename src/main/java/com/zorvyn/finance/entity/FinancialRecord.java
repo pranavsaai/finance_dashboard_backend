@@ -34,6 +34,7 @@ public class FinancialRecord {
     @NotBlank(message = "Category is required")
     private String category;
 
+    @NotNull(message = "Date is required")
     private LocalDateTime date;
 
     private String notes;

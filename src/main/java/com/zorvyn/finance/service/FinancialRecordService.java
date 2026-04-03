@@ -128,6 +128,10 @@ public class FinancialRecordService {
 
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
+        
+        if (page < 0 || size <= 0) {
+            throw new IllegalArgumentException("Invalid pagination parameters");
+        }
 
         PageRequest pageable = PageRequest.of(
                 page,
