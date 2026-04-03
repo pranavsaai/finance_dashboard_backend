@@ -17,6 +17,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 @Service
@@ -60,7 +62,7 @@ public class FinancialRecordService {
         return recordRepository.save(existing);
     }
 
-    // ADMIN only - soft delete: marks the record as deleted instead of removing it
+    // ADMIN only (soft delete)
     public void deleteRecord(String id) {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
@@ -73,14 +75,10 @@ public class FinancialRecordService {
         recordRepository.save(record);
     }
 
-    /**
-     1.) Filter records by any combination of type, category, date range, or keyword search.
-     2.) All params are optional. When 'search' is provided it does a keyword match on category.
-     3.) ANALYST + ADMIN only.
-     */
     public List<FinancialRecord> filterRecords(RecordType type, String category,
                                                LocalDate from, LocalDate to,
                                                String search) {
+
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
 
@@ -88,30 +86,42 @@ public class FinancialRecordService {
             throw new IllegalArgumentException("From date cannot be after To date");
         }
 
-        // keyword search has the highest priority - if provided, other filters are ignored
-        if (search != null && !search.isBlank()) {
-            String keyword = search.trim();
-            return recordRepository.search(keyword);
+        LocalDateTime fromDateTime = null;
+        LocalDateTime toDateTime = null;
+
+        if (from != null) {
+            fromDateTime = from.atStartOfDay();
+        }
+        if (to != null) {
+            toDateTime = to.atTime(LocalTime.MAX);
         }
 
-        boolean hasType      = type != null;
-        boolean hasCategory  = category != null && !category.isBlank();
-        boolean hasDateRange = from != null && to != null;
+        // Search priority
+        if (search != null && !search.isBlank()) {
+            return recordRepository.search(search.trim());
+        }
+
+        boolean hasType = type != null;
+        boolean hasCategory = category != null && !category.isBlank();
+        boolean hasDateRange = fromDateTime != null && toDateTime != null;
 
         if (hasType && hasCategory && hasDateRange) {
-            return recordRepository.findByTypeAndCategoryAndDateBetweenAndDeletedFalse(type, category, from, to);
+            return recordRepository.findByTypeAndCategoryAndDateBetweenAndDeletedFalse(
+                    type, category, fromDateTime, toDateTime);
         }
         if (hasType && hasDateRange) {
-            return recordRepository.findByTypeAndDateBetweenAndDeletedFalse(type, from, to);
+            return recordRepository.findByTypeAndDateBetweenAndDeletedFalse(
+                    type, fromDateTime, toDateTime);
         }
         if (hasCategory && hasDateRange) {
-            return recordRepository.findByCategoryAndDateBetweenAndDeletedFalse(category, from, to);
+            return recordRepository.findByCategoryAndDateBetweenAndDeletedFalse(
+                    category, fromDateTime, toDateTime);
         }
         if (hasType && hasCategory) {
             return recordRepository.findByTypeAndCategoryAndDeletedFalse(type, category);
         }
         if (hasDateRange) {
-            return recordRepository.findByDateBetweenAndDeletedFalse(from, to);
+            return recordRepository.findByDateBetweenAndDeletedFalse(fromDateTime, toDateTime);
         }
         if (hasType) {
             return recordRepository.findByTypeAndDeletedFalse(type);
@@ -123,12 +133,11 @@ public class FinancialRecordService {
         return recordRepository.findByDeletedFalse();
     }
 
-    // ANALYST + ADMIN only (Viewers cannot view records in any form)
     public PageResponse<FinancialRecord> getPaginated(int page, int size) {
 
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
-        
+
         if (page < 0 || size <= 0) {
             throw new IllegalArgumentException("Invalid pagination parameters");
         }
@@ -138,9 +147,7 @@ public class FinancialRecordService {
                 size,
                 Sort.by(Sort.Direction.DESC, "date")
         );
-
         Page<FinancialRecord> result = recordRepository.findByDeletedFalse(pageable);
-
         return new PageResponse<>(
                 result.getContent(),
                 page,
@@ -148,7 +155,6 @@ public class FinancialRecordService {
                 result.getTotalElements()
         );
     }
-
 
     private void assertAdmin(User user) {
         if (user.getRole() != Role.ADMIN) {

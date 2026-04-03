@@ -40,8 +40,8 @@ public class UserController {
         return new ResponseEntity<>(toResponse(saved), HttpStatus.CREATED);
     }
 
-    @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping
     public List<UserResponse> getAll() {
         return userService.getAllUsers()
                 .stream()
@@ -49,13 +49,14 @@ public class UserController {
                 .collect(Collectors.toList());
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{id}")
     public UserResponse getById(@PathVariable String id) {
         return toResponse(userService.getUserById(id));
     }
 
-    @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{id}")
     public UserResponse update(@PathVariable String id,
                               @RequestBody UserUpdateRequest request) {
         return toResponse(userService.updateUser(id, request));

@@ -142,16 +142,27 @@ class FinancialRecordServiceTest {
 
     @Test
     void filterRecords_typeAndDateRange_usesCombinedQuery() {
+
         when(userService.resolveCaller()).thenReturn(analystUser);
+
         LocalDate from = LocalDate.of(2025, 1, 1);
         LocalDate to = LocalDate.of(2025, 1, 31);
-        when(recordRepository.findByTypeAndDateBetweenAndDeletedFalse(RecordType.INCOME, from, to))
+        LocalDateTime fromDT = from.atStartOfDay();
+        LocalDateTime toDT = to.atTime(java.time.LocalTime.MAX);
+
+        when(recordRepository.findByTypeAndDateBetweenAndDeletedFalse(
+                RecordType.INCOME, fromDT, toDT))
                 .thenReturn(List.of(sampleRecord));
 
-        List<FinancialRecord> result = recordService.filterRecords(RecordType.INCOME, null, from, to, null);
+        List<FinancialRecord> result =
+                recordService.filterRecords(RecordType.INCOME, null, from, to, null);
+
         assertThat(result).hasSize(1);
-        verify(recordRepository).findByTypeAndDateBetweenAndDeletedFalse(RecordType.INCOME, from, to);
+
+        verify(recordRepository).findByTypeAndDateBetweenAndDeletedFalse(
+                RecordType.INCOME, fromDT, toDT);
     }
+
 
     @Test
     void filterRecords_keywordSearch_usesSearchMethod() {

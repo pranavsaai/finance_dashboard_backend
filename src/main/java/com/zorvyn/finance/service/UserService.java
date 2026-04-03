@@ -78,7 +78,7 @@ public class UserService {
     public User resolveCaller() {
         String callerId = AuthContext.get();
         if (callerId == null || callerId.isBlank()) {
-            throw new UnauthorizedException("Missing X-User-Id header");
+            throw new UnauthorizedException("Missing or invalid authentication token");
         }
         User caller = userRepository.findById(callerId).orElseThrow(() -> new ResourceNotFoundException("Caller user not found"));
         if (!caller.isActive()) {
