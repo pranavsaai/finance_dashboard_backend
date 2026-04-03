@@ -80,8 +80,7 @@ public class UserService {
         if (callerId == null || callerId.isBlank()) {
             throw new UnauthorizedException("Missing X-User-Id header");
         }
-        User caller = userRepository.findById(callerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Caller user not found"));
+        User caller = userRepository.findById(callerId).orElseThrow(() -> new ResourceNotFoundException("Caller user not found"));
         if (!caller.isActive()) {
             throw new UnauthorizedException("Account is inactive");
         }

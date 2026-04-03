@@ -2,6 +2,7 @@ package com.zorvyn.finance.security;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
@@ -9,13 +10,18 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    private final String SECRET = "mysecretkeymysecretkeymysecretkey"; 
+    @Value("${jwt.secret}")
+    private String SECRET;
+
+    @Value("${jwt.expiration}")
+    private long EXPIRATION;
 
     public String generateToken(String userId, String role) {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim("role", role)
                 .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
                 .signWith(Keys.hmacShaKeyFor(SECRET.getBytes()))
                 .compact();
     }
@@ -28,6 +34,7 @@ public class JwtUtil {
                 .getBody()
                 .getSubject();
     }
+
     public String extractRole(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(SECRET.getBytes())

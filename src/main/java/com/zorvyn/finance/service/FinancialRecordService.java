@@ -74,9 +74,9 @@ public class FinancialRecordService {
     }
 
     /**
-     * Filter records by any combination of type, category, date range, or keyword search.
-     * All params are optional. When 'search' is provided it does a keyword match on category.
-     * ANALYST + ADMIN only.
+     1.) Filter records by any combination of type, category, date range, or keyword search.
+     2.) All params are optional. When 'search' is provided it does a keyword match on category.
+     3.) ANALYST + ADMIN only.
      */
     public List<FinancialRecord> filterRecords(RecordType type, String category,
                                                LocalDate from, LocalDate to,

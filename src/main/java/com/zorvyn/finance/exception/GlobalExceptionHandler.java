@@ -60,7 +60,6 @@ public class GlobalExceptionHandler {
         return buildError(ex.getMessage(), HttpStatus.BAD_REQUEST);
     }
 
-    // fallback
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGeneral(Exception ex) {
         return buildError("Internal Server Error", HttpStatus.INTERNAL_SERVER_ERROR);
