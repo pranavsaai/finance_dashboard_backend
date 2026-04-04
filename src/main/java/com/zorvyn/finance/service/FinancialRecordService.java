@@ -83,6 +83,7 @@ public class FinancialRecordService {
         recordRepository.save(record);
     }
 
+    // ANALYST + ADMIN
     public List<FinancialRecord> filterRecords(
         RecordType type,
         String category,
@@ -90,17 +91,21 @@ public class FinancialRecordService {
         LocalDate to,
         String search
     ) {
-        userService.resolveCaller();
+        User caller = userService.resolveCaller();
+        assertNotViewer(caller);
 
         if ((from != null && to == null) || (from == null && to != null)) {
             throw new IllegalArgumentException("Both 'from' and 'to' must be provided together");
         }
 
-        String userId = null;
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("'from' date must not be after 'to' date");
+        }
+
         LocalDateTime fromDateTime = null;
         LocalDateTime toDateTime = null;
 
-        if (from != null && to != null) {
+        if (from != null) {
             fromDateTime = from.atStartOfDay();
             toDateTime = to.atTime(23, 59, 59);
         }
@@ -111,10 +116,11 @@ public class FinancialRecordService {
                 fromDateTime,
                 toDateTime,
                 search,
-                userId
+                null
         );
     }
 
+    // ANALYST + ADMIN
     public PageResponse<FinancialRecord> getPaginated(int page, int size) {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
@@ -136,6 +142,8 @@ public class FinancialRecordService {
                 result.getTotalElements()
         );
     }
+
+    // ANALYST + ADMIN
     public FinancialRecord getRecordById(String id) {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
