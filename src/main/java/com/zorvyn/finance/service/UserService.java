@@ -23,10 +23,6 @@ public class UserService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder encoder;
 
-    /**
-     * Validates credentials and returns the authenticated user.
-     * Throws UnauthorizedException for invalid email, wrong password, or inactive account.
-     */
     public User login(String email, String rawPassword) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
@@ -42,13 +38,19 @@ public class UserService {
         return user;
     }
 
-    /**
-     * Fetches a user by ID for token refresh.
-     * Throws UnauthorizedException if not found.
-     */
+     //Fetches a user by ID for token refresh.
+     //Also checks isActive() — a deactivated user must not be able to obtain
+     //New access tokens via a still-valid refresh token.
+
     public User getUserForRefresh(String userId) {
-        return userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+        if (!user.isActive()) {
+            throw new UnauthorizedException("Account is inactive");
+        }
+
+        return user;
     }
 
     public User getCurrentUser() {
@@ -74,12 +76,18 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
     }
 
-    /**
-     * Admin can update another user's role or activate/deactivate them.
-     * Partial update: only fields that are non-null in the request are applied.
-     */
     public User updateUser(String id, UserUpdateRequest request) {
-        resolveCallerAsAdmin();
+        User caller = resolveCallerAsAdmin();
+
+        // Prevent admin from modifying their own role or active status
+        if (caller.getId().equals(id)) {
+            if (request.getRole() != null && request.getRole() != caller.getRole()) {
+                throw new IllegalArgumentException("Admin cannot change their own role");
+            }
+            if (request.getActive() != null && !request.getActive()) {
+                throw new IllegalArgumentException("Admin cannot deactivate their own account");
+            }
+        }
 
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
@@ -99,14 +107,12 @@ public class UserService {
             }
             user.setEmail(request.getEmail());
         }
-        
 
         return userRepository.save(user);
     }
 
-    /**
-     * Resolves the calling user from AuthContext and asserts they are ADMIN.
-     */
+ 
+    //Resolves the calling user from AuthContext and asserts they are ADMIN.
     private User resolveCallerAsAdmin() {
         User caller = resolveCaller();
         if (caller.getRole() != Role.ADMIN) {
