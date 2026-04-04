@@ -33,9 +33,19 @@ public class JwtUtil {
                 .compact();
     }
 
+    public String generateRefreshToken(String userId) {
+        return Jwts.builder()
+                .setSubject(userId)
+                .claim("type", "refresh")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + (7 * 24 * 60 * 60 * 1000L))) // 7 days
+                .signWith(getSigningKey())
+                .compact();
+    }
+
     public String extractUserId(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(SECRET.getBytes())
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody()
@@ -44,24 +54,16 @@ public class JwtUtil {
 
     public String extractRole(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(SECRET.getBytes())
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody()
                 .get("role", String.class);
     }
-    public String generateRefreshToken(String userId) {
-        return Jwts.builder()
-                .setSubject(userId)
-                .claim("type", "refresh")
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + (7 * 24 * 60 * 60 * 1000L))) // 7 days
-                .signWith(Keys.hmacShaKeyFor(SECRET.getBytes()))
-                .compact();
-    }
+
     public boolean isRefreshToken(String token) {
         String type = Jwts.parserBuilder()
-                .setSigningKey(SECRET.getBytes())
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody()
