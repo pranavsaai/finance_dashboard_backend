@@ -61,7 +61,6 @@ class FinancialRecordServiceTest {
         viewerUser.setRole(Role.VIEWER);
         viewerUser.setActive(true);
 
-        // sampleRecord — used for repository mock return values and delete tests
         sampleRecord = new FinancialRecord();
         sampleRecord.setId("rec-1");
         sampleRecord.setAmount(5000.0);
@@ -70,7 +69,6 @@ class FinancialRecordServiceTest {
         sampleRecord.setDate(LocalDateTime.of(2025, 1, 15, 0, 0));
         sampleRecord.setDeleted(false);
 
-        // sampleRequest — used as input to createRecord() and updateRecord()
         sampleRequest = new FinancialRecordRequest();
         sampleRequest.setAmount(5000.0);
         sampleRequest.setType(RecordType.INCOME);
@@ -82,6 +80,8 @@ class FinancialRecordServiceTest {
     void tearDown() {
         AuthContext.clear();
     }
+
+    // --- createRecord ---
 
     @Test
     void createRecord_viewerCannotCreate_throwsAccessDenied() {
@@ -105,9 +105,10 @@ class FinancialRecordServiceTest {
         FinancialRecord result = recordService.createRecord(sampleRequest);
 
         assertThat(result.getId()).isEqualTo("rec-1");
-        // userId is stamped inside the service from caller context
         verify(recordRepository).save(any(FinancialRecord.class));
     }
+
+    // --- getAllRecords ---
 
     @Test
     void getAllRecords_viewerCannotAccess_throwsAccessDenied() {
@@ -124,6 +125,42 @@ class FinancialRecordServiceTest {
         List<FinancialRecord> result = recordService.getAllRecords();
         assertThat(result).hasSize(1);
     }
+
+    // --- updateRecord ---
+
+    @Test
+    void updateRecord_admin_shouldSucceed() {
+        when(userService.resolveCaller()).thenReturn(adminUser);
+        when(recordRepository.findById("rec-1")).thenReturn(Optional.of(sampleRecord));
+        when(recordRepository.save(any())).thenReturn(sampleRecord);
+
+        FinancialRecordRequest req = new FinancialRecordRequest();
+        req.setAmount(500.0);
+        req.setType(RecordType.EXPENSE);
+        req.setCategory("Food");
+        req.setDate(LocalDateTime.now());
+
+        FinancialRecord result = recordService.updateRecord("rec-1", req);
+        assertThat(result.getAmount()).isEqualTo(500.0);
+    }
+
+    @Test
+    void updateRecord_analyst_shouldThrow() {
+        when(userService.resolveCaller()).thenReturn(analystUser);
+
+        assertThatThrownBy(() -> recordService.updateRecord("rec-1", sampleRequest))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void updateRecord_viewer_shouldThrow() {
+        when(userService.resolveCaller()).thenReturn(viewerUser);
+
+        assertThatThrownBy(() -> recordService.updateRecord("rec-1", sampleRequest))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // --- deleteRecord ---
 
     @Test
     void deleteRecord_recordNotFound_throwsNotFound() {
@@ -146,6 +183,15 @@ class FinancialRecordServiceTest {
         verify(recordRepository).save(sampleRecord);
         // should NOT call deleteById — it's a soft delete
         verify(recordRepository, never()).deleteById(any());
+    }
+
+    // --- filterRecords ---
+
+    @Test
+    void filterRecords_viewer_throwsAccessDenied() {
+        when(userService.resolveCaller()).thenReturn(viewerUser);
+        assertThatThrownBy(() -> recordService.filterRecords(null, null, null, null, null))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -195,43 +241,61 @@ class FinancialRecordServiceTest {
     }
 
     @Test
-    void getPaginated_viewer_throwsAccessDenied() {
-        when(userService.resolveCaller()).thenReturn(viewerUser);
-        assertThatThrownBy(() -> recordService.getPaginated(0, 10))
-                .isInstanceOf(AccessDeniedException.class);
-    }
-    @Test
-    void updateRecord_admin_shouldSucceed() {
-        when(userService.resolveCaller()).thenReturn(adminUser);
-        when(recordRepository.findById("1")).thenReturn(Optional.of(sampleRecord));
-        when(recordRepository.save(any())).thenReturn(sampleRecord);
-
-        FinancialRecordRequest req = new FinancialRecordRequest();
-        req.setAmount(500.0);
-        req.setType(RecordType.EXPENSE);
-        req.setCategory("Food");
-        req.setDate(LocalDateTime.now());
-
-        FinancialRecord result = recordService.updateRecord("1", req);
-
-        assertThat(result.getAmount()).isEqualTo(500.0);
-    }
-    @Test
-    void updateRecord_analyst_shouldThrow() {
-        when(userService.resolveCaller()).thenReturn(analystUser);
-
-        FinancialRecordRequest req = new FinancialRecordRequest();
-
-        assertThatThrownBy(() ->
-            recordService.updateRecord("1", req)
-        ).isInstanceOf(AccessDeniedException.class);
-    }
-    @Test
     void filterRecords_onlyFrom_shouldThrow() {
         when(userService.resolveCaller()).thenReturn(analystUser);
 
         assertThatThrownBy(() ->
             recordService.filterRecords(null, null, LocalDate.now(), null, null)
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("'from' and 'to' must be provided together");
+    }
+
+    @Test
+    void filterRecords_fromAfterTo_shouldThrow() {
+        when(userService.resolveCaller()).thenReturn(analystUser);
+
+        LocalDate from = LocalDate.of(2025, 12, 1);
+        LocalDate to = LocalDate.of(2025, 1, 1);
+
+        assertThatThrownBy(() ->
+            recordService.filterRecords(null, null, from, to, null)
+        ).isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("'from' date must not be after 'to' date");
+    }
+
+    // --- getPaginated ---
+
+    @Test
+    void getPaginated_viewer_throwsAccessDenied() {
+        when(userService.resolveCaller()).thenReturn(viewerUser);
+        assertThatThrownBy(() -> recordService.getPaginated(0, 10))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // --- getRecordById ---
+
+    @Test
+    void getRecordById_viewer_throwsAccessDenied() {
+        when(userService.resolveCaller()).thenReturn(viewerUser);
+        assertThatThrownBy(() -> recordService.getRecordById("rec-1"))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void getRecordById_analyst_returnsRecord() {
+        when(userService.resolveCaller()).thenReturn(analystUser);
+        when(recordRepository.findById("rec-1")).thenReturn(Optional.of(sampleRecord));
+
+        FinancialRecord result = recordService.getRecordById("rec-1");
+        assertThat(result.getId()).isEqualTo("rec-1");
+    }
+
+    @Test
+    void getRecordById_notFound_throwsResourceNotFound() {
+        when(userService.resolveCaller()).thenReturn(analystUser);
+        when(recordRepository.findById("bad-id")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> recordService.getRecordById("bad-id"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }
