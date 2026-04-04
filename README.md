@@ -315,9 +315,12 @@ Records are never physically removed from the database. `DELETE /api/records/{id
 
 ### 4.) Rate Limiting
 
-Implemented directly in `AuthFilter` using a `ConcurrentHashMap<String, Integer>` keyed by client IP address. Once a single IP exceeds 100 requests, subsequent requests receive HTTP 429 with the message `Too many requests`.
+Rate limiting is implemented in `AuthFilter` using an in-memory `ConcurrentHashMap<String, Integer>` keyed by client IP address. Each request increments a counter, and once an IP exceeds 100 requests, subsequent requests are blocked with HTTP 429 ("Too many requests").
 
-**Current behavior and known limitation**: The counter resets on application restart and is stored in memory only — it does not persist across instances. This is sufficient for single-instance local development. A production-grade implementation would use Redis with a sliding window or token bucket algorithm. This is documented as a planned improvement.
+**Current behavior and limitation**:
+- The counter tracks total requests per IP with no time window.
+- Once the limit is exceeded, the IP remains blocked until the application restarts.
+- The implementation is instance-local and does not work in distributed or multi-instance environments.
 
 ### 5.) Unit Tests
 
@@ -693,9 +696,9 @@ Returns aggregated financial summary. Accessible by all roles (VIEWER, ANALYST, 
 ## Known Tradeoffs and Future Improvements
 
 ### Rate Limiting (In-Memory)
-The current implementation uses a ConcurrentHashMap<IP, count> in AuthFilter. This resets on restart and does not work in a multi-instance deployment.
+The current implementation uses a ConcurrentHashMap<IP, count> in AuthFilter. This resets on restart and does not work in a multi-instance deployment as this approach was chosen for simplicity and to avoid introducing external dependencies, making it suitable for local development and assessment scope
 
-**Planned improvement**: Replace with Redis-backed rate limiting using a sliding window algorithm. A library like Bucket4j with a Redis backend would support distributed deployments and configurable time windows (for example: 100 requests per minute per IP, not unbounded).
+**Planned improvement**: In a production system, this would be replaced with a time-based rate limiting strategy (e.g., sliding window or token bucket) using a distributed store like Redis. Tools such as Bucket4j with Redis support would enable limits like "100 requests per minute per IP" and ensure consistency across multiple application instances.
 
 ### Bootstrap User Creation (Public Endpoint)
 The /api/users endpoint is intentionally left permitAll() to allow initial system bootstrapping (first admin creation). After the first user is created, access is restricted via application-level checks.
