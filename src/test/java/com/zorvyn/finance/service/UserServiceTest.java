@@ -75,8 +75,7 @@ class UserServiceTest {
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Missing or invalid authentication token");
     }
-    @
-    Test
+    @Test
     void resolveCaller_inactiveUser_throwsUnauthorized() {
         AuthContext.set("inactive-1");
         when(userRepository.findById("inactive-1")).thenReturn(Optional.of(inactiveUser));
