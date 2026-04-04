@@ -28,6 +28,9 @@ public class FinancialRecordService {
     private final FinancialRecordRepository recordRepository;
     private final UserService userService;
 
+    //Pagination size cap — prevents clients from requesting unbounded result sets.
+    private static final int MAX_PAGE_SIZE = 100;
+
     // ADMIN only
     public FinancialRecord createRecord(FinancialRecordRequest request) {
         User caller = userService.resolveCaller();
@@ -125,8 +128,15 @@ public class FinancialRecordService {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
 
-        if (page < 0 || size <= 0) {
-            throw new IllegalArgumentException("Invalid pagination parameters");
+        if (page < 0) {
+            throw new IllegalArgumentException("Page index must not be negative");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than zero");
+        }
+        // FIX: Cap page size to prevent clients from requesting the entire collection at once.
+        if (size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("Page size must not exceed " + MAX_PAGE_SIZE);
         }
 
         PageRequest pageable = PageRequest.of(
