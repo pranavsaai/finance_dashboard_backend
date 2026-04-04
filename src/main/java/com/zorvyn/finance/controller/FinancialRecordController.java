@@ -75,4 +75,10 @@ public class FinancialRecordController {
             @RequestParam(defaultValue = "10") int size) {
         return recordService.getPaginated(page, size);
     }
+    
+    @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
+    @GetMapping("/{id}")
+    public FinancialRecord getById(@PathVariable String id) {
+        return recordService.getRecordById(id);
+    }
 }
