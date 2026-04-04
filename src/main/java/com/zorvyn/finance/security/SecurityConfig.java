@@ -25,6 +25,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 // Only POST /api/users is public (bootstrap). All other user endpoints require auth.
                 .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
+                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()
             )
 

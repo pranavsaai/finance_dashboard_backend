@@ -10,7 +10,7 @@ import lombok.Data;
 public class UserUpdateRequest {
     private Role role;
     private Boolean active;
-    
+
     @Size(min = 2, max = 100)
     private String name;
 

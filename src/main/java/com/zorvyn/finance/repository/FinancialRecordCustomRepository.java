@@ -13,6 +13,8 @@ public interface FinancialRecordCustomRepository {
 
     double getTotalExpense();
 
+    Map<String, Double> getIncomeExpenseTotals();
+
     Map<String, Map<String, Double>> getCategoryTotals();
 
     Map<String, Double> getMonthlyTrends();

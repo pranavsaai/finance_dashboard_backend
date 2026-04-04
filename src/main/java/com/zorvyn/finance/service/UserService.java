@@ -59,9 +59,9 @@ public class UserService {
 
     /**
      * Creates a new user from a validated UserCreateRequest DTO.
-     *
-     * Only the fields a caller is allowed to supply (name, email, password, role) are mapped here. Fields like id, active, and createdAt are set internally,
-       not sourced from the request, preventing callers from injecting arbitrary state.
+    
+     * Only the fields a caller is allowed to supply (name, email, password, role) are mapped here.
+     * Fields like id, active, and createdAt are set internally, not sourced from the request, preventing callers from injecting arbitrary state.
      */
     public User createUser(UserCreateRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {

@@ -50,6 +50,30 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
     }
 
     @Override
+    public Map<String, Double> getIncomeExpenseTotals() {
+        Aggregation agg = Aggregation.newAggregation(
+                Aggregation.match(Criteria.where("deleted").is(false)),
+                Aggregation.group("type")
+                        .sum("amount").as("total")
+        );
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> results = (List<Map<String, Object>>) (List<?>)
+                mongoTemplate.aggregate(agg, "records", Map.class)
+                .getMappedResults();
+
+        Map<String, Double> map = new HashMap<>();
+
+        for (Map<String, Object> r : results) {
+            String type = (String) r.get("_id");
+            double total = ((Number) r.get("total")).doubleValue();
+            map.put(type, total);
+        }
+
+        return map;
+    }
+
+    @Override
     public Map<String, Map<String, Double>> getCategoryTotals() {
 
         Aggregation agg = Aggregation.newAggregation(
@@ -84,7 +108,6 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
     public Map<String, Double> getMonthlyTrends() {
 
         Aggregation agg = Aggregation.newAggregation(
-
                 Aggregation.match(Criteria.where("deleted").is(false)),
 
                 Aggregation.project()
@@ -111,13 +134,11 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
         Map<String, Double> map = new LinkedHashMap<>();
 
         for (Map<String, Object> r : results) {
-
             @SuppressWarnings("unchecked")
             Map<String, Object> id = (Map<String, Object>) r.get("_id");
 
             String year = (String) id.get("year");
             String month = (String) id.get("month");
-
             String key = year + "-" + month;
 
             map.put(key, ((Number) r.get("total")).doubleValue());

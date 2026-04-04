@@ -1,7 +1,6 @@
 package com.zorvyn.finance.service;
 
 import com.zorvyn.finance.dto.DashboardSummary;
-import com.zorvyn.finance.entity.FinancialRecord;
 import com.zorvyn.finance.repository.FinancialRecordRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -17,23 +16,19 @@ public class DashboardService {
     private final FinancialRecordRepository recordRepository;
     private final UserService userService;
 
-    /**
-     * Full dashboard summary - accessible by ALL roles (VIEWER, ANALYST, ADMIN).
-     * All aggregations are computed inside MongoDB — Java only receives final results.
-     
-     * getCategoryTotals() now returns Map<String, Map<String, Double>> (split by type),
-       matching the updated DashboardSummary DTO and repository contract.
-     */
     public DashboardSummary getSummary() {
 
         userService.resolveCaller();
+        Map<String, Double> totals = recordRepository.getIncomeExpenseTotals();
 
-        double totalIncome = recordRepository.getTotalIncome();
-        double totalExpense = recordRepository.getTotalExpense();
+        double totalIncome = totals.getOrDefault("INCOME", 0.0);
+        double totalExpense = totals.getOrDefault("EXPENSE", 0.0);
 
+        // Existing aggregations
         Map<String, Map<String, Double>> categoryTotals = recordRepository.getCategoryTotals();
         Map<String, Double> monthlyTrends = recordRepository.getMonthlyTrends();
 
+        // Recent activity (last 5 records)
         List<Map<String, Object>> recentActivity = recordRepository
                 .findTop5ByDeletedFalseOrderByDateDesc()
                 .stream()

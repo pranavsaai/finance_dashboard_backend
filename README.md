@@ -74,6 +74,7 @@ There's a chicken-and-egg problem in any role-based system: the first admin can'
 
 This is a single count check in `UserController` — no special configuration needed. `SecurityConfig` intentionally exposes only `POST /api/users` as public — not the entire `/api/users` route. All other methods on that path (`GET`, `PATCH`) require authentication. The first user is also validated to have `ADMIN` role — creating a Viewer or Analyst as the first account would lock you out of the system.
 
+
 ### 6. Input DTOs separate API contracts from persistence models
 
 Controllers accept dedicated request DTOs, never raw entity objects. This prevents callers from injecting arbitrary state:
@@ -481,6 +482,7 @@ Returns the currently logged-in user's profile.
 #### `PATCH /api/users/{id}` — ADMIN only
 Partial update — only the fields you send are changed.
 
+
 ```json
 {
   "role": "VIEWER",
@@ -505,6 +507,7 @@ Partial update — only the fields you send are changed.
   "notes": "January salary"
 }
 ```
+Note: Records store full datetime (`LocalDateTime`), while filtering endpoints accept date-only (`LocalDate`) for convenience. The date range is internally expanded to cover the full day.
 
 **Response 201:**
 ```json
@@ -578,6 +581,17 @@ GET /api/records/filter?from=2025-01-01&to=2025-03-31
   "total": 42
 }
 ```
+### Get All Records
+
+GET /api/records
+
+Returns all non-deleted financial records.
+
+**Note**:
+This endpoint returns the full dataset and is intended for smaller datasets or administrative usage.  
+For large datasets, use the paginated endpoint:
+
+GET /api/records/paginated
 
 ---
 
@@ -616,6 +630,22 @@ GET /api/records/filter?from=2025-01-01&to=2025-03-31
 `categoryTotals` is split by type — INCOME and EXPENSE for the same category are never merged into a single number.
 
 `monthlyTrends` values are net per month — positive means net income, negative means net expense for that month.
+
+### Dashboard Summary
+
+GET /api/dashboard/summary
+
+Returns:
+
+- totalIncome
+- totalExpense
+- balance
+- categoryTotals
+- monthlyTrends
+- recentActivity
+
+**Note**:
+`recentActivity` contains the **5 most recent records** based on date (descending order).
 
 ---
 
@@ -682,6 +712,13 @@ The rate limiter uses a `ConcurrentHashMap` inside `AuthFilter` — works for a 
 
 **Production approach:** Automatically close the public route after the first user is created, or use an invite/onboarding flow.
 
+### Bootstrap Race Condition
+
+The initial user creation uses an `isFirstUser()` check. In highly concurrent scenarios, multiple requests could pass this check simultaneously and create more than one initial user.
+
+**Tradeoff**:
+This is acceptable for a single-instance assessment setup. In production, this would be handled with database-level constraints or transactional locking.
+
 ### Search is regex-based, not index-backed
 
 The `search` parameter runs a case-insensitive regex across `category` and `notes`. Correct, but regex queries aren't index-backed in MongoDB by default — they'll slow down at large data volumes.
@@ -700,6 +737,24 @@ Deleted records stay in the `records` collection permanently. At scale, this kee
 
 **Production approach:** Consolidate into a centralized AOP-based authorization advice that handles role checks and active status in one place.
 
+### Dual-Layer Access Control Tradeoff
+
+The system uses both:
+
+1. JWT-based role validation (fast, stateless)
+2. Database-level user validation via `resolveCaller()`
+
+This ensures that changes like user deactivation are enforced immediately without waiting for token expiration.
+
+**Tradeoff**:
+This approach results in an additional database lookup per request to verify the current user state. For example, fetching all users performs:
+
+- JWT validation (no DB)
+- `resolveCaller()` (1 DB read)
+- actual data query (1 DB read)
+
+This was a deliberate decision to prioritize security and correctness over minimal database access.
+
 ### No controller-level tests
 
 Unit tests cover the service layer where business logic and access control rules live. Controller tests weren't included to keep the setup straightforward — they'd require full JWT generation and seeded users to run.
@@ -711,3 +766,13 @@ Unit tests cover the service layer where business logic and access control rules
 `getMonthlyTrends()` groups records using `Asia/Kolkata` as the timezone. Appropriate for the current context, but would need to be configurable for multi-region deployment.
 
 **Future improvement:** Expose timezone as a configurable property in `application.properties`.
+
+### User Password Management
+
+The current implementation does not include a password reset or update endpoint as in assessment mentioned admins can only manage users but passwords must be of users choice ..so i little bit confused there and thought to proceed it in future.
+
+**Tradeoff**:
+User updates support name, email, role, and active status, but password changes require a separate flow (e.g., secure reset via email or admin-triggered reset).
+
+**Future improvement**:
+Introduce a dedicated password update/reset mechanism with proper validation and security controls.

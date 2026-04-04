@@ -28,6 +28,7 @@ public class User {
     @NotBlank(message = "Email is required")
     @Indexed(unique = true)
     private String email;
+
     @NotBlank(message = "Password is required")
     private String password;
 

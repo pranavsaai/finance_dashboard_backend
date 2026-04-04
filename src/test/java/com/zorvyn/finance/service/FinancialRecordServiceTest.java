@@ -140,8 +140,9 @@ class FinancialRecordServiceTest {
         req.setCategory("Food");
         req.setDate(LocalDateTime.now());
 
+        when(recordRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         FinancialRecord result = recordService.updateRecord("rec-1", req);
-        assertThat(result.getAmount()).isEqualTo(500.0);
+        assertThat(result.getAmount()).isEqualTo(500.0); 
     }
 
     @Test

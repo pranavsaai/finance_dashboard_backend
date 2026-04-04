@@ -55,7 +55,7 @@ public class JwtUtil {
 
     // Checks whether the token is a refresh token by reading the "type" claim.
     // Access tokens now explicitly carry type=access, so this is an exact match
-    // rather than a null check — both token types are unambiguous.
+    // rather than a null check , both token types are unambiguous.
     public boolean isRefreshToken(String token) {
         return "refresh".equals(parseClaims(token).get("type", String.class));
     }
