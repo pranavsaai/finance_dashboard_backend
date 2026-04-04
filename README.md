@@ -734,3 +734,13 @@ Records are soft-deleted using a deleted flag but remain in the primary collecti
 Current logging is minimal and primarily console-based.
 
 **Planned improvement**: Introduce structured logging (e.g. JSON logs) and integrate with monitoring tools like ELK stack or Prometheus/Grafana for better observability in production.
+
+### Filter Query Design
+
+The current filtering approach uses multiple method combinations based on optional parameters (type, category, date range, search keyword). While this keeps the logic explicit and easy to follow, it can lead to method proliferation as conditions grow.
+
+**Tradeoff**:
+This approach was chosen for clarity and to align with Spring Data query derivation for the assessment scope.
+
+**Planned improvement**:
+A more scalable approach would involve using a query DTO or criteria builder pattern to dynamically construct queries, reducing the number of repository methods and improving maintainability.
