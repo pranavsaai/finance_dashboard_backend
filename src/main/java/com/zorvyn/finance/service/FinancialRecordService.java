@@ -75,62 +75,39 @@ public class FinancialRecordService {
         recordRepository.save(record);
     }
 
-    public List<FinancialRecord> filterRecords(RecordType type, String category,
-                                               LocalDate from, LocalDate to,
-                                               String search) {
+    public List<FinancialRecord> filterRecords(
+        RecordType type,
+        String category,
+        LocalDate from,
+        LocalDate to,
+        String search
+    ) {
 
         User caller = userService.resolveCaller();
-        assertNotViewer(caller);
 
-        if (from != null && to != null && from.isAfter(to)) {
-            throw new IllegalArgumentException("From date cannot be after To date");
+        String userId = null;
+
+        // Viewer restriction (example logic — adjust if needed)
+        if (caller.getRole() == Role.VIEWER) {
+            userId = caller.getId();
         }
 
         LocalDateTime fromDateTime = null;
         LocalDateTime toDateTime = null;
 
-        if (from != null) {
+        if (from != null && to != null) {
             fromDateTime = from.atStartOfDay();
-        }
-        if (to != null) {
-            toDateTime = to.atTime(LocalTime.MAX);
+            toDateTime = to.atTime(23, 59, 59);
         }
 
-        // Search priority
-        if (search != null && !search.isBlank()) {
-            return recordRepository.search(search.trim());
-        }
-
-        boolean hasType = type != null;
-        boolean hasCategory = category != null && !category.isBlank();
-        boolean hasDateRange = fromDateTime != null && toDateTime != null;
-
-        if (hasType && hasCategory && hasDateRange) {
-            return recordRepository.findByTypeAndCategoryAndDateBetweenAndDeletedFalse(
-                    type, category, fromDateTime, toDateTime);
-        }
-        if (hasType && hasDateRange) {
-            return recordRepository.findByTypeAndDateBetweenAndDeletedFalse(
-                    type, fromDateTime, toDateTime);
-        }
-        if (hasCategory && hasDateRange) {
-            return recordRepository.findByCategoryAndDateBetweenAndDeletedFalse(
-                    category, fromDateTime, toDateTime);
-        }
-        if (hasType && hasCategory) {
-            return recordRepository.findByTypeAndCategoryAndDeletedFalse(type, category);
-        }
-        if (hasDateRange) {
-            return recordRepository.findByDateBetweenAndDeletedFalse(fromDateTime, toDateTime);
-        }
-        if (hasType) {
-            return recordRepository.findByTypeAndDeletedFalse(type);
-        }
-        if (hasCategory) {
-            return recordRepository.findByCategoryAndDeletedFalse(category);
-        }
-
-        return recordRepository.findByDeletedFalse();
+        return recordRepository.filterDynamic(
+                type,
+                category,
+                fromDateTime,
+                toDateTime,
+                search,
+                userId
+        );
     }
 
     public PageResponse<FinancialRecord> getPaginated(int page, int size) {

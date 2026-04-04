@@ -7,7 +7,12 @@ import org.springframework.data.mongodb.core.aggregation.*;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Repository;
 
+import com.zorvyn.finance.entity.FinancialRecord;
+import com.zorvyn.finance.entity.RecordType;
+
+import java.time.LocalDateTime;
 import java.util.*;
+import org.springframework.data.mongodb.core.query.Query;
 
 @Repository
 @RequiredArgsConstructor
@@ -22,7 +27,8 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group().sum("amount").as("total")
         );
 
-        Map<String, Object> result = mongoTemplate.aggregate(agg, "records", Map.class)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) mongoTemplate.aggregate(agg, "records", Map.class)
                 .getUniqueMappedResult();
 
         return result != null ? ((Number) result.get("total")).doubleValue() : 0;
@@ -35,7 +41,8 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
                 Aggregation.group().sum("amount").as("total")
         );
 
-        Map<String, Object> result = mongoTemplate.aggregate(agg, "records", Map.class)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) mongoTemplate.aggregate(agg, "records", Map.class)
                 .getUniqueMappedResult();
 
         return result != null ? ((Number) result.get("total")).doubleValue() : 0;
@@ -107,4 +114,54 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
 
         return map;
     }
+        @Override
+        public List<FinancialRecord> filterDynamic(
+                RecordType type,
+                String category,
+                LocalDateTime from,
+                LocalDateTime to,
+                String search,
+                String userId
+        ) {
+
+        List<Criteria> criteriaList = new ArrayList<>();
+
+        // Always filter non-deleted
+        criteriaList.add(Criteria.where("deleted").is(false));
+
+        // User-based filtering
+        if (userId != null) {
+                criteriaList.add(Criteria.where("userId").is(userId));
+        }
+
+        // Type filter
+        if (type != null) {
+                criteriaList.add(Criteria.where("type").is(type));
+        }
+
+        // Category filter
+        if (category != null && !category.isBlank()) {
+                criteriaList.add(Criteria.where("category").is(category));
+        }
+
+        // Date range filter
+        if (from != null && to != null) {
+                criteriaList.add(Criteria.where("date").gte(from).lte(to));
+        }
+
+        // Search filter (category OR notes)
+        if (search != null && !search.isBlank()) {
+                Criteria searchCriteria = new Criteria().orOperator(
+                        Criteria.where("category").regex(search, "i"),
+                        Criteria.where("notes").regex(search, "i")
+                );
+                criteriaList.add(searchCriteria);
+        }
+
+        Criteria finalCriteria = new Criteria().andOperator(criteriaList.toArray(new Criteria[0]));
+
+        Query query = new Query(finalCriteria).with(Sort.by(Sort.Direction.DESC, "date"));
+
+        return mongoTemplate.find(query, FinancialRecord.class);
+        }
 }
