@@ -204,6 +204,7 @@ class FinancialRecordServiceTest {
     void updateRecord_admin_shouldSucceed() {
         when(userService.resolveCaller()).thenReturn(adminUser);
         when(recordRepository.findById("1")).thenReturn(Optional.of(sampleRecord));
+        when(recordRepository.save(any())).thenReturn(sampleRecord);
 
         FinancialRecordRequest req = new FinancialRecordRequest();
         req.setAmount(500.0);
