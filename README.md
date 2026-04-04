@@ -245,6 +245,7 @@ Each record stores: `amount` (validated positive Double), `type` (INCOME/EXPENSE
 
 - **Create**: `POST /api/records` — ADMIN only
 - **Read all**: `GET /api/records` — ANALYST + ADMIN
+- **Read one**: `GET /api/records/{id}` — ANALYST + ADMIN
 - **Update**: `PUT /api/records/{id}` — ADMIN only, full field update
 - **Delete**: `DELETE /api/records/{id}` — ADMIN only, soft delete only
 - **Filter**: `GET /api/records/filter` — five optional combinable params, single dynamic query
@@ -469,6 +470,13 @@ All non-deleted records.
 
 ---
 
+#### `GET /api/records/{id}` — ANALYST + ADMIN
+Returns a single non-deleted record by ID.
+
+**Errors:** `404` record not found, `403` non-analyst/admin
+
+---
+
 #### `GET /api/records/filter` — ANALYST + ADMIN
 
 All params optional, all combinable:
@@ -575,13 +583,15 @@ cd finance-backend
 
 # 2. Set environment variables
 export MONGO_URI_FINANCE=mongodb://localhost:27017/finance_db
-export JWT_SECRET_FINANCE=your-secret-key-minimum-32-characters-long
+export JWT_SECRET_FINANCE=$(openssl rand -base64 32)   # must be Base64-encoded
 
 # 3. Run
 mvn spring-boot:run
 ```
 
 Server starts at `http://localhost:8080`.
+
+Swagger UI (interactive API explorer) is available at `http://localhost:8080/swagger-ui/index.html` once the app is running.
 
 ### Running Tests
 ```bash
@@ -599,7 +609,7 @@ Create a `.env` file based on `.env.example` and configure the following:
 | Variable | Description |
 |---|---|
 | `MONGO_URI_FINANCE` | MongoDB connection string |
-| `JWT_SECRET_FINANCE` | JWT signing secret (min 32 characters) |
+| `JWT_SECRET_FINANCE` | JWT signing secret — must be a **Base64-encoded** string. Generate one with: `openssl rand -base64 32` |
 
 Access tokens expire in **15 minutes**. Refresh tokens expire in **7 days**.
 
