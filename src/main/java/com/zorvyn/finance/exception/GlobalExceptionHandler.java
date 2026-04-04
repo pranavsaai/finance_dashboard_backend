@@ -70,4 +70,12 @@ public class GlobalExceptionHandler {
         body.put("error", message);
         return new ResponseEntity<>(body, status);
     }
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidJson(Exception ex) {
+
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Invalid JSON format");
+
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
 }
