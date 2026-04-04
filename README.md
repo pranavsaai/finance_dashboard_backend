@@ -224,6 +224,7 @@ DashboardService.getSummary()
 ### 1. User and Role Management
 
 - **Creating users**: `POST /api/users` — open for first user (bootstrap), ADMIN-only thereafter.
+- **User registration design**: This system does not support open self-registration. After the initial bootstrap user is created, only ADMIN users can create new users. This design ensures controlled access and aligns with enterprise systems where user onboarding is managed centrally.
 - **Role model**: Three roles defined as a Java enum — `VIEWER`, `ANALYST`, `ADMIN` — stored as strings in MongoDB.
 - **Managing status**: `PATCH /api/users/{id}` allows ADMIN to update a user's role or set `active: false` (deactivate). Partial update — only non-null fields in the request body are applied.
 - **Restricting by role**: Done at two layers — `@PreAuthorize` at the controller and `assertAdmin()` / `assertNotViewer()` inside services. Inactive users are rejected during `resolveCaller()` before any logic runs.
