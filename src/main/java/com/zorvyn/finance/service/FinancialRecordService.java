@@ -93,9 +93,6 @@ public class FinancialRecordService {
         User caller = userService.resolveCaller();
 
         String userId = null;
-        if (caller.getRole() == Role.VIEWER) {
-            userId = caller.getId();
-        }
 
         LocalDateTime fromDateTime = null;
         LocalDateTime toDateTime = null;
