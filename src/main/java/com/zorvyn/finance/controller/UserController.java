@@ -28,7 +28,9 @@ public class UserController {
 
         // Check if any user exists
         if (userService.isFirstUser()) {
-            // Allow first user creation (bootstrap)
+            if (user.getRole() != com.zorvyn.finance.entity.Role.ADMIN) {
+                throw new IllegalArgumentException("First user must have ADMIN role");
+            }
             User saved = userService.createUser(user);
             return new ResponseEntity<>(toResponse(saved), HttpStatus.CREATED);
         }
