@@ -639,3 +639,15 @@ Deleted records stay in the primary `records` collection indefinitely. At scale 
 Current logging is minimal (console only, a few debug prints).
 
 **Production approach**: Structured JSON logging with request IDs, integrated with an observability stack (ELK, Datadog, etc.).
+
+### Limited Controller-Level Testing
+
+Unit tests are primarily focused on the service layer, where core business logic and validations reside. This ensures that the most critical parts of the application are thoroughly tested.
+
+Controller-level tests (e.g., using MockMvc) were not included to keep the test setup simple and avoid additional complexity around test data seeding (e.g., creating users for JWT-based authentication).
+
+**Tradeoff**:
+This approach reduces test coverage at the API layer, particularly for security and request/response validation.
+
+**Future improvement**:
+Controller and integration tests can be added using MockMvc or Testcontainers with proper test data setup to validate end-to-end request flows, including authentication and role-based access control.
