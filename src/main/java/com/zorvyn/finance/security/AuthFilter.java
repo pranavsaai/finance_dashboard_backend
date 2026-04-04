@@ -22,11 +22,19 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
 
-    // Time-window based limiter
+    // Time-window based rate limiter (per IP, resets every WINDOW_MS).
+    // This is an in-memory limiter — works for single-instance deployments.
+    // For multi-instance setups, replace with a distributed solution (as i mentioned it in readme already)
     private static final Map<String, RequestInfo> requestCount = new ConcurrentHashMap<>();
 
     private static final int MAX_REQUESTS = 100;
-    private static final long WINDOW_MS = 60_000; 
+    private static final long WINDOW_MS = 60_000; // 1 minute
+
+    // Stale entries are pruned during each request to prevent unbounded memory growth.
+    // Any IP whose last window started more than WINDOW_MS ago and is no longer rate-limited
+    // gets removed from the map. This keeps memory bounded without a separate cleanup thread.
+    private static final long STALE_THRESHOLD_MS = WINDOW_MS * 2;
+
     private static class RequestInfo {
         int count;
         long startTime;
@@ -46,9 +54,15 @@ public class AuthFilter extends OncePerRequestFilter {
         String ip = request.getRemoteAddr();
         long now = System.currentTimeMillis();
 
+        // Prune stale entries periodically to prevent map from growing indefinitely.
+        // Only runs every 1000 requests (cheap probabilistic cleanup).
+        if (Math.random() < 0.001) {
+            requestCount.entrySet().removeIf(e -> now - e.getValue().startTime > STALE_THRESHOLD_MS);
+        }
+
         RequestInfo info = requestCount.getOrDefault(ip, new RequestInfo(0, now));
 
-        // Resets window after 1 minute
+        // Reset window after 1 minute
         if (now - info.startTime > WINDOW_MS) {
             info = new RequestInfo(0, now);
         }
@@ -59,7 +73,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (info.count > MAX_REQUESTS) {
             response.setStatus(429);
             response.setContentType("application/json");
-            response.getWriter().write("{\"error\": \"Too many requests\"}");
+            response.getWriter().write("{\"error\": \"Too many requests. Limit is 100 requests per minute.\"}");
             return;
         }
 
@@ -85,7 +99,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType("application/json");
                 response.getWriter().write("{\"error\": \"Invalid or expired token\"}");
-                return; 
+                return;
             }
         }
 
