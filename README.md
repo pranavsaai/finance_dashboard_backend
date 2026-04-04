@@ -333,14 +333,14 @@ Every test uses `@AfterEach` to call `AuthContext.clear()` to prevent ThreadLoca
 
 | Action | VIEWER | ANALYST | ADMIN |
 |---|---|---|---|
-| Login / Refresh token | ✅ | ✅ | ✅ |
-| View dashboard summary | ✅ | ✅ | ✅ |
-| View / filter records | ❌ | ✅ | ✅ |
-| Paginated records | ❌ | ✅ | ✅ |
-| Create records | ❌ | ❌ | ✅ |
-| Update records | ❌ | ❌ | ✅ |
-| Delete records | ❌ | ❌ | ✅ |
-| Manage users | ❌ | ❌ | ✅ |
+| Login / Refresh token | ALLOWED | ALLOWED | ALLOWED |
+| View dashboard summary | ALLOWED | ALLOWED | ALLOWED |
+| View / filter records | NOT ALLOWED | ALLOWED | ALLOWED |
+| Paginated records | NOT ALLOWED | ALLOWED | ALLOWED |
+| Create records | NOT ALLOWED | NOT ALLOWED | ALLOWED |
+| Update records | NOT ALLOWED | NOT ALLOWED | ALLOWED |
+| Delete records | NOT ALLOWED | NOT ALLOWED | ALLOWED |
+| Manage users | NOT ALLOWED | NOT ALLOWED | ALLOWED |
 
 ---
 
