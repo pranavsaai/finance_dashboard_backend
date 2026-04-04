@@ -370,8 +370,8 @@ The Spring context integration test (`FinanceApplicationTests`) requires a local
 
 | Variable | Description | Example |
 |---|---|---|
-| `MONGO_URI_FINANCE` | MongoDB connection URI | `mongodb://localhost:27017/finance_db` |
-| `JWT_SECRET_FINANCE` | Secret key for JWT signing (min 32 chars) | `my-super-secret-finance-key-2025` |
+| `MONGO_URI_FINANCE` | MongoDB connection URI | `Your mongodb connection string (example: mongodb://localhost:27017/your_db)` |
+| `JWT_SECRET_FINANCE` | Secret key for JWT signing (min 32 chars) | `any 32 bit character string` |
 
 Access tokens expire after 15 minutes 
 
