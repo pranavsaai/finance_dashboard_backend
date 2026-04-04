@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,6 +26,9 @@ class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder;
 
     @InjectMocks
     private UserService userService;
@@ -69,10 +73,10 @@ class UserServiceTest {
         AuthContext.set(null);
         assertThatThrownBy(() -> userService.resolveCaller())
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessageContaining("Missing X-User-Id header");
+                .hasMessageContaining("Missing or invalid authentication token");
     }
-
-    @Test
+    @
+    Test
     void resolveCaller_inactiveUser_throwsUnauthorized() {
         AuthContext.set("inactive-1");
         when(userRepository.findById("inactive-1")).thenReturn(Optional.of(inactiveUser));
