@@ -51,10 +51,11 @@ public class AuthFilter extends OncePerRequestFilter {
                         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
                         UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(auth);
-                        System.out.println("Authenticated user: " + userId);
 
                     } catch (Exception e) {
-                        System.out.println("JWT ERROR: " + e.getMessage());
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json");
+                        response.getWriter().write("{\"error\": \"Invalid or expired token\"}");
                     }
                 }
 
