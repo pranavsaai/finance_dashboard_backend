@@ -594,6 +594,8 @@ The Spring context test (`FinanceApplicationTests`) requires a MongoDB instance 
 
 ## Environment Variables
 
+Create a `.env` file based on `.env.example` and configure the following:
+
 | Variable | Description |
 |---|---|
 | `MONGO_URI_FINANCE` | MongoDB connection string |
