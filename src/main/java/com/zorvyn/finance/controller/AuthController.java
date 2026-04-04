@@ -20,7 +20,7 @@ public class AuthController {
     private final BCryptPasswordEncoder encoder;
 
     @PostMapping("/login")
-    public AuthResponse login(@RequestBody LoginRequest request) {
+    public AuthResponse login(@jakarta.validation.Valid @RequestBody LoginRequest request) {
 
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
