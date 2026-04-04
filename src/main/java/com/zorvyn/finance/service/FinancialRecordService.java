@@ -90,10 +90,13 @@ public class FinancialRecordService {
         LocalDate to,
         String search
     ) {
-        User caller = userService.resolveCaller();
+        userService.resolveCaller();
+
+        if ((from != null && to == null) || (from == null && to != null)) {
+            throw new IllegalArgumentException("Both 'from' and 'to' must be provided together");
+        }
 
         String userId = null;
-
         LocalDateTime fromDateTime = null;
         LocalDateTime toDateTime = null;
 
