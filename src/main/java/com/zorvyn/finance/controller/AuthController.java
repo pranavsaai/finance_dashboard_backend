@@ -2,6 +2,7 @@ package com.zorvyn.finance.controller;
 
 import com.zorvyn.finance.dto.AuthResponse;
 import com.zorvyn.finance.dto.LoginRequest;
+import com.zorvyn.finance.dto.RefreshRequest;
 import com.zorvyn.finance.entity.User;
 import com.zorvyn.finance.exception.UnauthorizedException;
 import com.zorvyn.finance.repository.UserRepository;
@@ -22,9 +23,8 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@jakarta.validation.Valid @RequestBody LoginRequest request) {
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
-                
+        User user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
+
         if (!user.isActive()) {
             throw new UnauthorizedException("Account is inactive");
         }
@@ -41,16 +41,17 @@ public class AuthController {
 
 
     @PostMapping("/refresh")
-    public AuthResponse refresh(@RequestBody String refreshToken) {
+    public AuthResponse refresh(@jakarta.validation.Valid @RequestBody RefreshRequest request) {
 
+        String refreshToken = request.getRefreshToken();
+        
         if (!jwtUtil.isRefreshToken(refreshToken)) {
             throw new UnauthorizedException("Invalid refresh token");
         }
 
         String userId = jwtUtil.extractUserId(refreshToken);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UnauthorizedException("User not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("User not found"));
 
         String newAccessToken = jwtUtil.generateToken(userId, user.getRole().name());
 
