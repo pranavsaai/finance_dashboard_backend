@@ -1,5 +1,6 @@
 package com.zorvyn.finance.service;
 
+import com.zorvyn.finance.dto.UserCreateRequest;
 import com.zorvyn.finance.dto.UserUpdateRequest;
 import com.zorvyn.finance.entity.Role;
 import com.zorvyn.finance.entity.User;
@@ -75,6 +76,7 @@ class UserServiceTest {
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Missing or invalid authentication token");
     }
+
     @Test
     void resolveCaller_inactiveUser_throwsUnauthorized() {
         AuthContext.set("inactive-1");
@@ -116,7 +118,6 @@ class UserServiceTest {
         assertThat(result).hasSize(2);
     }
 
-
     @Test
     void updateUser_adminCanChangeRole() {
         AuthContext.set("admin-1");
@@ -145,23 +146,39 @@ class UserServiceTest {
         assertThat(updated.isActive()).isFalse();
     }
 
-
     @Test
     void createUser_duplicateEmail_throwsIllegalArgument() {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setName("Admin");
+        request.setEmail("admin@test.com");
+        request.setPassword("password");
+        request.setRole(Role.ADMIN);
+
         when(userRepository.existsByEmail("admin@test.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.createUser(adminUser))
+        assertThatThrownBy(() -> userService.createUser(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("email already exists");
     }
 
     @Test
     void createUser_newEmail_savesAndReturns() {
-        when(userRepository.existsByEmail("admin@test.com")).thenReturn(false);
-        when(userRepository.save(adminUser)).thenReturn(adminUser);
+        UserCreateRequest request = new UserCreateRequest();
+        request.setName("Admin");
+        request.setEmail("admin@test.com");
+        request.setPassword("password");
+        request.setRole(Role.ADMIN);
 
-        User saved = userService.createUser(adminUser);
+        when(userRepository.existsByEmail("admin@test.com")).thenReturn(false);
+        when(encoder.encode("password")).thenReturn("hashed");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId("new-id");
+            return u;
+        });
+
+        User saved = userService.createUser(request);
         assertThat(saved.getEmail()).isEqualTo("admin@test.com");
-        verify(userRepository, times(1)).save(adminUser);
+        verify(userRepository, times(1)).save(any(User.class));
     }
 }

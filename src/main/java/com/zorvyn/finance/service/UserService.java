@@ -1,5 +1,6 @@
 package com.zorvyn.finance.service;
 
+import com.zorvyn.finance.dto.UserCreateRequest;
 import com.zorvyn.finance.dto.UserUpdateRequest;
 import com.zorvyn.finance.entity.Role;
 import com.zorvyn.finance.entity.User;
@@ -38,10 +39,9 @@ public class UserService {
         return user;
     }
 
-     //Fetches a user by ID for token refresh.
-     //Also checks isActive() — a deactivated user must not be able to obtain
-     //New access tokens via a still-valid refresh token.
-
+    // Fetches a user by ID for token refresh.
+    // Also checks isActive() — a deactivated user must not be able to obtain
+    // new access tokens via a still-valid refresh token.
     public User getUserForRefresh(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
@@ -57,11 +57,24 @@ public class UserService {
         return resolveCaller();
     }
 
-    public User createUser(User user) {
-        if (userRepository.existsByEmail(user.getEmail())) {
+    /**
+     * Creates a new user from a validated UserCreateRequest DTO.
+     *
+     * Only the fields a caller is allowed to supply (name, email, password, role) are mapped here. Fields like id, active, and createdAt are set internally,
+       not sourced from the request, preventing callers from injecting arbitrary state.
+     */
+    public User createUser(UserCreateRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("A user with this email already exists");
         }
-        user.setPassword(encoder.encode(user.getPassword()));
+
+        User user = new User();
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPassword(encoder.encode(request.getPassword()));
+        user.setRole(request.getRole());
+        // active defaults to true, createdAt defaults to LocalDateTime.now() — both set by the entity
+
         return userRepository.save(user);
     }
 
@@ -111,8 +124,7 @@ public class UserService {
         return userRepository.save(user);
     }
 
- 
-    //Resolves the calling user from AuthContext and asserts they are ADMIN.
+    // Resolves the calling user from AuthContext and asserts they are ADMIN.
     private User resolveCallerAsAdmin() {
         User caller = resolveCaller();
         if (caller.getRole() != Role.ADMIN) {

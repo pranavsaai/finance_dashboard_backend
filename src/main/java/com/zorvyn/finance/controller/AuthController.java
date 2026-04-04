@@ -35,11 +35,15 @@ public class AuthController {
 
         String refreshToken = request.getRefreshToken();
 
-        if (!jwtUtil.isRefreshToken(refreshToken)) {
-            throw new UnauthorizedException("Invalid refresh token");
+        // validateRefreshTokenAndExtractUserId() validates the token signature, expiry,
+        // and type claim in a single parse — previously isRefreshToken() and extractUserId()
+        // each parsed the token independently, doubling the work.
+        String userId;
+        try {
+            userId = jwtUtil.validateRefreshTokenAndExtractUserId(refreshToken);
+        } catch (Exception e) {
+            throw new UnauthorizedException("Invalid or expired refresh token");
         }
-
-        String userId = jwtUtil.extractUserId(refreshToken);
 
         User user = userService.getUserForRefresh(userId);
 

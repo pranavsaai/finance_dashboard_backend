@@ -71,18 +71,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleGeneral(Exception ex) {
         return buildError("Internal Server Error", HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
+    
     private ResponseEntity<Map<String, String>> buildError(String message, HttpStatus status) {
         Map<String, String> body = new HashMap<>();
         body.put("error", message);
         return new ResponseEntity<>(body, status);
     }
+
+    // 400 - Malformed JSON body
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, String>> handleInvalidJson(Exception ex) {
-
         Map<String, String> error = new HashMap<>();
         error.put("error", "Invalid JSON format");
-
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
 }

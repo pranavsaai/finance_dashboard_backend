@@ -22,10 +22,10 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
 
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()   
-                .requestMatchers("/api/users").permitAll()   
-                .requestMatchers(HttpMethod.POST, "/api/users").permitAll()  
-                .anyRequest().authenticated()                
+                .requestMatchers("/api/auth/**").permitAll()
+                // Only POST /api/users is public (bootstrap). All other user endpoints require auth.
+                .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
+                .anyRequest().authenticated()
             )
 
             .addFilterBefore(authFilter,

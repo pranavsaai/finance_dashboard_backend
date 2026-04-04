@@ -1,5 +1,6 @@
 package com.zorvyn.finance.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -27,6 +28,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim("role", role)
+                .claim("type", "access")          // explicit type claim — makes isRefreshToken() unambiguous
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
                 .signWith(getSigningKey())
@@ -44,31 +46,33 @@ public class JwtUtil {
     }
 
     public String extractUserId(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getSubject();
+        return parseClaims(token).getSubject();
     }
 
     public String extractRole(String token) {
+        return parseClaims(token).get("role", String.class);
+    }
+
+    // Checks whether the token is a refresh token by reading the "type" claim.
+    // Access tokens now explicitly carry type=access, so this is an exact match
+    // rather than a null check — both token types are unambiguous.
+    public boolean isRefreshToken(String token) {
+        return "refresh".equals(parseClaims(token).get("type", String.class));
+    }
+
+    public String validateRefreshTokenAndExtractUserId(String token) {
+        Claims claims = parseClaims(token);
+        if (!"refresh".equals(claims.get("type", String.class))) {
+            throw new io.jsonwebtoken.JwtException("Not a refresh token");
+        }
+        return claims.getSubject();
+    }
+
+    private Claims parseClaims(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
-                .getBody()
-                .get("role", String.class);
-    }
-
-    public boolean isRefreshToken(String token) {
-        String type = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .get("type", String.class);
-
-        return "refresh".equals(type);
+                .getBody();
     }
 }

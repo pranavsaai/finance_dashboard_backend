@@ -19,11 +19,12 @@ import org.springframework.data.mongodb.core.query.Query;
 public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCustomRepository {
 
     private final MongoTemplate mongoTemplate;
+    private static final String AGGREGATION_TIMEZONE = "Asia/Kolkata";
 
     @Override
     public double getTotalIncome() {
         Aggregation agg = Aggregation.newAggregation(
-                Aggregation.match(Criteria.where("type").is("INCOME").and("deleted").is(false)),
+                Aggregation.match(Criteria.where("type").is(RecordType.INCOME).and("deleted").is(false)),
                 Aggregation.group().sum("amount").as("total")
         );
 
@@ -37,7 +38,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
     @Override
     public double getTotalExpense() {
         Aggregation agg = Aggregation.newAggregation(
-                Aggregation.match(Criteria.where("type").is("EXPENSE").and("deleted").is(false)),
+                Aggregation.match(Criteria.where("type").is(RecordType.EXPENSE).and("deleted").is(false)),
                 Aggregation.group().sum("amount").as("total")
         );
 
@@ -49,21 +50,31 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
     }
 
     @Override
-    public Map<String, Double> getCategoryTotals() {
+    public Map<String, Map<String, Double>> getCategoryTotals() {
 
         Aggregation agg = Aggregation.newAggregation(
                 Aggregation.match(Criteria.where("deleted").is(false)),
-                Aggregation.group("category").sum("amount").as("total")
+                Aggregation.group(
+                        Fields.fields("category", "type")
+                ).sum("amount").as("total")
         );
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> results = (List<Map<String, Object>>)(List<?>) 
+        List<Map<String, Object>> results = (List<Map<String, Object>>) (List<?>)
                 mongoTemplate.aggregate(agg, "records", Map.class).getMappedResults();
 
-        Map<String, Double> map = new HashMap<>();
+        // Build nested map: category -> { type -> total }
+        Map<String, Map<String, Double>> map = new HashMap<>();
 
         for (Map<String, Object> r : results) {
-            map.put((String) r.get("_id"), ((Number) r.get("total")).doubleValue());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> id = (Map<String, Object>) r.get("_id");
+
+            String category = (String) id.get("category");
+            String type = (String) id.get("type");
+            double total = ((Number) r.get("total")).doubleValue();
+
+            map.computeIfAbsent(category, k -> new HashMap<>()).put(type, total);
         }
 
         return map;
@@ -78,14 +89,14 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
 
                 Aggregation.project()
                         .and(DateOperators.DateToString.dateOf("date").toString("%Y")
-                                .withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("year")
+                                .withTimezone(DateOperators.Timezone.valueOf(AGGREGATION_TIMEZONE))).as("year")
                         .and(DateOperators.DateToString.dateOf("date").toString("%m")
-                                .withTimezone(DateOperators.Timezone.valueOf("Asia/Kolkata"))).as("month")
+                                .withTimezone(DateOperators.Timezone.valueOf(AGGREGATION_TIMEZONE))).as("month")
                         .and("amount").as("amount")
                         .and("type").as("type"),
 
                 Aggregation.group("year", "month")
-                        .sum(ConditionalOperators.when(Criteria.where("type").is("INCOME"))
+                        .sum(ConditionalOperators.when(Criteria.where("type").is(RecordType.INCOME))
                                 .thenValueOf("amount")
                                 .otherwise(ArithmeticOperators.Multiply.valueOf("amount").multiplyBy(-1)))
                         .as("total"),
@@ -94,7 +105,7 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
         );
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> results = (List<Map<String, Object>>)(List<?>) 
+        List<Map<String, Object>> results = (List<Map<String, Object>>) (List<?>)
                 mongoTemplate.aggregate(agg, "records", Map.class).getMappedResults();
 
         Map<String, Double> map = new LinkedHashMap<>();
@@ -114,15 +125,16 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
 
         return map;
     }
-        @Override
-        public List<FinancialRecord> filterDynamic(
-                RecordType type,
-                String category,
-                LocalDateTime from,
-                LocalDateTime to,
-                String search,
-                String userId
-        ) {
+
+    @Override
+    public List<FinancialRecord> filterDynamic(
+            RecordType type,
+            String category,
+            LocalDateTime from,
+            LocalDateTime to,
+            String search,
+            String userId
+    ) {
 
         List<Criteria> criteriaList = new ArrayList<>();
 
@@ -131,31 +143,32 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
 
         // User-based filtering
         if (userId != null) {
-                criteriaList.add(Criteria.where("userId").is(userId));
+            criteriaList.add(Criteria.where("userId").is(userId));
         }
 
         // Type filter
         if (type != null) {
-                criteriaList.add(Criteria.where("type").is(type));
+            criteriaList.add(Criteria.where("type").is(type));
         }
 
         // Category filter
         if (category != null && !category.isBlank()) {
-                criteriaList.add(Criteria.where("category").is(category));
+            criteriaList.add(Criteria.where("category").is(category));
         }
 
         // Date range filter
         if (from != null && to != null) {
-                criteriaList.add(Criteria.where("date").gte(from).lte(to));
+            criteriaList.add(Criteria.where("date").gte(from).lte(to));
         }
 
-        // Search filter (category OR notes)
+        // Search filter (category OR notes) — uses case-insensitive regex.
+        // Regex search is not index-backed by default. For large datasets, consider a MongoDB text index or Atlas Search for better performance.
         if (search != null && !search.isBlank()) {
-                Criteria searchCriteria = new Criteria().orOperator(
-                        Criteria.where("category").regex(search, "i"),
-                        Criteria.where("notes").regex(search, "i")
-                );
-                criteriaList.add(searchCriteria);
+            Criteria searchCriteria = new Criteria().orOperator(
+                    Criteria.where("category").regex(search, "i"),
+                    Criteria.where("notes").regex(search, "i")
+            );
+            criteriaList.add(searchCriteria);
         }
 
         Criteria finalCriteria = new Criteria().andOperator(criteriaList.toArray(new Criteria[0]));
@@ -163,5 +176,5 @@ public class FinancialRecordCustomRepositoryImpl implements FinancialRecordCusto
         Query query = new Query(finalCriteria).with(Sort.by(Sort.Direction.DESC, "date"));
 
         return mongoTemplate.find(query, FinancialRecord.class);
-        }
+    }
 }

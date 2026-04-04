@@ -1,5 +1,6 @@
 package com.zorvyn.finance.controller;
 
+import com.zorvyn.finance.dto.UserCreateRequest;
 import com.zorvyn.finance.dto.UserResponse;
 import com.zorvyn.finance.dto.UserUpdateRequest;
 import com.zorvyn.finance.entity.User;
@@ -23,22 +24,25 @@ public class UserController {
 
     private final UserService userService;
 
+    // POST /api/users is publicly accessible during bootstrap (first user only).
+    // Once the first user exists, only an authenticated ADMIN may create further users.
+    // The bootstrap guard is enforced in UserService.createUser(), not here,
+    // so this endpoint intentionally has no @PreAuthorize.
     @PostMapping
-    public ResponseEntity<UserResponse> create(@Valid @RequestBody User user) {
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request) {
 
-        // Check if any user exists
         if (userService.isFirstUser()) {
-            if (user.getRole() != com.zorvyn.finance.entity.Role.ADMIN) {
+            if (request.getRole() != com.zorvyn.finance.entity.Role.ADMIN) {
                 throw new IllegalArgumentException("First user must have ADMIN role");
             }
-            User saved = userService.createUser(user);
+            User saved = userService.createUser(request);
             return new ResponseEntity<>(toResponse(saved), HttpStatus.CREATED);
         }
 
-        // After bootstrap → only ADMIN allowed
+        // After bootstrap — only ADMIN allowed
         userService.assertAdmin();
 
-        User saved = userService.createUser(user);
+        User saved = userService.createUser(request);
         return new ResponseEntity<>(toResponse(saved), HttpStatus.CREATED);
     }
 
@@ -64,6 +68,12 @@ public class UserController {
         return toResponse(userService.updateUser(id, request));
     }
 
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public UserResponse getCurrentUser() {
+        return toResponse(userService.getCurrentUser());
+    }
+
     private UserResponse toResponse(User user) {
         return new UserResponse(
                 user.getId(),
@@ -73,11 +83,5 @@ public class UserController {
                 user.isActive(),
                 user.getCreatedAt()
         );
-    }
-    
-    @GetMapping("/me")
-    @PreAuthorize("isAuthenticated()")
-    public UserResponse getCurrentUser() {
-        return toResponse(userService.getCurrentUser());
     }
 }

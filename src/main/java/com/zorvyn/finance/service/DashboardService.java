@@ -19,7 +19,10 @@ public class DashboardService {
 
     /**
      * Full dashboard summary - accessible by ALL roles (VIEWER, ANALYST, ADMIN).
-     * Now uses MongoDB aggregation instead of Java streams.
+     * All aggregations are computed inside MongoDB — Java only receives final results.
+     
+     * getCategoryTotals() now returns Map<String, Map<String, Double>> (split by type),
+       matching the updated DashboardSummary DTO and repository contract.
      */
     public DashboardSummary getSummary() {
 
@@ -28,8 +31,9 @@ public class DashboardService {
         double totalIncome = recordRepository.getTotalIncome();
         double totalExpense = recordRepository.getTotalExpense();
 
-        Map<String, Double> categoryTotals = recordRepository.getCategoryTotals();
+        Map<String, Map<String, Double>> categoryTotals = recordRepository.getCategoryTotals();
         Map<String, Double> monthlyTrends = recordRepository.getMonthlyTrends();
+
         List<Map<String, Object>> recentActivity = recordRepository
                 .findTop5ByDeletedFalseOrderByDateDesc()
                 .stream()
