@@ -50,6 +50,10 @@ public class UserService {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
     }
+    
+    public User getCurrentUser() {
+        return resolveCaller();
+    }
 
     public User createUser(User user) {
         if (userRepository.existsByEmail(user.getEmail())) {

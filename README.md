@@ -234,6 +234,7 @@ AuthContext.clear() ← always runs in finally block, prevents ThreadLocal leaka
 The role model is three-tiered: `VIEWER`, `ANALYST`, `ADMIN`. Roles are stored as strings in MongoDB and enforced at two independent layers on every request.
 
 - **Create user**: `POST /api/users` — open for first user (bootstrap), ADMIN-only after
+- **Get current user**: `GET /api/users/me` — returns the authenticated user's profile using JWT (Small idea on my own, not mentioned in assessment but applicable in a real finance dashboard context in which allowing users to view their own profile securely)
 - **Update user**: `PATCH /api/users/{id}` — ADMIN can change role or toggle `active` status. Partial update — only non-null fields in the request body are applied
 - **User state**: Deactivated users (`active: false`) are rejected in `resolveCaller()` before any business logic runs, even if they hold a valid token
 - **Password security**: BCrypt-hashed on creation. Plain text never stored. `UserResponse` DTO always excludes the password field
@@ -569,7 +570,7 @@ Record remains in database with `deleted = true`.
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-username/finance-backend.git
+git clone https://github.com/pranavsaai/finance-backend.git
 cd finance-backend
 
 # 2. Set environment variables

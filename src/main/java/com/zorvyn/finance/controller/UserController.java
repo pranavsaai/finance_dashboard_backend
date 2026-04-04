@@ -74,4 +74,10 @@ public class UserController {
                 user.getCreatedAt()
         );
     }
+    
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public UserResponse getCurrentUser() {
+        return toResponse(userService.getCurrentUser());
+    }
 }
