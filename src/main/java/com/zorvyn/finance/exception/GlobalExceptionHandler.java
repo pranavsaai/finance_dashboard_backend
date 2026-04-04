@@ -13,13 +13,13 @@ import java.util.Map;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
-    // 404 - resource not found
+    // 404 - Resource not found
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(ResourceNotFoundException ex) {
         return buildError(ex.getMessage(), HttpStatus.NOT_FOUND);
     }
 
-    // 403 - custom access denied (your service layer)
+    // 403 - Custom access denied (Service layer)
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, String>> handleAccessDenied(AccessDeniedException ex) {
         return buildError(ex.getMessage(), HttpStatus.FORBIDDEN);
@@ -32,29 +32,36 @@ public class GlobalExceptionHandler {
         return buildError("Access Denied", HttpStatus.FORBIDDEN);
     }
 
-    // 401 - missing/invalid authentication
+    // 401 - Missing/invalid authentication
     @ExceptionHandler(AuthenticationCredentialsNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleUnauthorizedSpring(
             AuthenticationCredentialsNotFoundException ex) {
         return buildError("Unauthorized", HttpStatus.UNAUTHORIZED);
     }
 
-    // 401 - your custom unauthorized
+    // 401 - Custom unauthorized
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<Map<String, String>> handleUnauthorized(UnauthorizedException ex) {
         return buildError(ex.getMessage(), HttpStatus.UNAUTHORIZED);
     }
 
-    // 400 - validation errors
+    // Validation errors
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+
+        Map<String, String> fieldErrors = new HashMap<>();
+
         ex.getBindingResult().getFieldErrors()
-                .forEach(err -> errors.put(err.getField(), err.getDefaultMessage()));
-        return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
+                .forEach(err -> fieldErrors.put(err.getField(), err.getDefaultMessage()));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("error", "Validation failed");
+        response.put("details", fieldErrors);
+
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
-    // 400 - bad request
+    // 400 - Bad request
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
         return buildError(ex.getMessage(), HttpStatus.BAD_REQUEST);
