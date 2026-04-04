@@ -50,7 +50,7 @@ public class UserService {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
     }
-    
+
     public User getCurrentUser() {
         return resolveCaller();
     }
@@ -90,6 +90,16 @@ public class UserService {
         if (request.getActive() != null) {
             user.setActive(request.getActive());
         }
+        if (request.getName() != null) {
+            user.setName(request.getName());
+        }
+        if (request.getEmail() != null) {
+            if (!user.getEmail().equals(request.getEmail()) && userRepository.existsByEmail(request.getEmail())) {
+                throw new IllegalArgumentException("A user with this email already exists");
+            }
+            user.setEmail(request.getEmail());
+        }
+        
 
         return userRepository.save(user);
     }

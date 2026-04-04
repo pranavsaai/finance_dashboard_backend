@@ -200,4 +200,37 @@ class FinancialRecordServiceTest {
         assertThatThrownBy(() -> recordService.getPaginated(0, 10))
                 .isInstanceOf(AccessDeniedException.class);
     }
+    @Test
+    void updateRecord_admin_shouldSucceed() {
+        when(userService.resolveCaller()).thenReturn(adminUser);
+        when(recordRepository.findById("1")).thenReturn(Optional.of(sampleRecord));
+
+        FinancialRecordRequest req = new FinancialRecordRequest();
+        req.setAmount(500.0);
+        req.setType(RecordType.EXPENSE);
+        req.setCategory("Food");
+        req.setDate(LocalDateTime.now());
+
+        FinancialRecord result = recordService.updateRecord("1", req);
+
+        assertThat(result.getAmount()).isEqualTo(500.0);
+    }
+    @Test
+    void updateRecord_analyst_shouldThrow() {
+        when(userService.resolveCaller()).thenReturn(analystUser);
+
+        FinancialRecordRequest req = new FinancialRecordRequest();
+
+        assertThatThrownBy(() ->
+            recordService.updateRecord("1", req)
+        ).isInstanceOf(AccessDeniedException.class);
+    }
+    @Test
+    void filterRecords_onlyFrom_shouldThrow() {
+        when(userService.resolveCaller()).thenReturn(analystUser);
+
+        assertThatThrownBy(() ->
+            recordService.filterRecords(null, null, LocalDate.now(), null, null)
+        ).isInstanceOf(IllegalArgumentException.class);
+    }
 }

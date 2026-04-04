@@ -136,6 +136,14 @@ public class FinancialRecordService {
                 result.getTotalElements()
         );
     }
+    public FinancialRecord getRecordById(String id) {
+        User caller = userService.resolveCaller();
+        assertNotViewer(caller);
+
+        return recordRepository.findById(id)
+                .filter(r -> !r.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
+    }
 
     private void assertAdmin(User user) {
         if (user.getRole() != Role.ADMIN) {
