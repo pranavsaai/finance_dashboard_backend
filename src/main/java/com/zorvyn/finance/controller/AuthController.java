@@ -24,6 +24,10 @@ public class AuthController {
 
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
+                
+        if (!user.isActive()) {
+            throw new UnauthorizedException("Account is inactive");
+        }
 
         if (!encoder.matches(request.getPassword(), user.getPassword())) {
             throw new UnauthorizedException("Invalid credentials");
