@@ -31,7 +31,7 @@ public class AuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
-        try {  // ✅ START TRY
+        try { 
 
             String ip = request.getRemoteAddr();
             long now = System.currentTimeMillis();

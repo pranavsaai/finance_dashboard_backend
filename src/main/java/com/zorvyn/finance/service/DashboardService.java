@@ -29,9 +29,7 @@ public class DashboardService {
         Map<String, Double> monthlyTrends = recordRepository.getMonthlyTrends();
 
         // Recent activity (last 5 records)
-        List<Map<String, Object>> recentActivity = recordRepository
-                .findTop5ByDeletedFalseOrderByDateDesc()
-                .stream()
+        List<Map<String, Object>> recentActivity = recordRepository.findTop5ByDeletedFalseOrderByDateDesc().stream()
                 .map(r -> {
                     Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("id", r.getId());

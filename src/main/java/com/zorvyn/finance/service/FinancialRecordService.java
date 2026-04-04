@@ -158,8 +158,7 @@ public class FinancialRecordService {
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
 
-        return recordRepository.findById(id)
-                .filter(r -> !r.isDeleted())
+        return recordRepository.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
     }
 

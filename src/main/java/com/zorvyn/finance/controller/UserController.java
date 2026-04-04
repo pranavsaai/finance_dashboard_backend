@@ -49,10 +49,7 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public List<UserResponse> getAll() {
-        return userService.getAllUsers()
-                .stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return userService.getAllUsers().stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -63,8 +60,7 @@ public class UserController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{id}")
-    public UserResponse update(@PathVariable String id,
-                               @Valid @RequestBody UserUpdateRequest request) {
+    public UserResponse update(@PathVariable String id, @Valid @RequestBody UserUpdateRequest request) {
         return toResponse(userService.updateUser(id, request));
     }
 

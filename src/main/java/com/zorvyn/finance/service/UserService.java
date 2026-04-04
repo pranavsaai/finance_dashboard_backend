@@ -25,8 +25,7 @@ public class UserService {
     private final BCryptPasswordEncoder encoder;
 
     public User login(String email, String rawPassword) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
 
         if (!user.isActive()) {
             throw new UnauthorizedException("Account is inactive");
@@ -43,8 +42,7 @@ public class UserService {
     // Also checks isActive() — a deactivated user must not be able to obtain
     // new access tokens via a still-valid refresh token.
     public User getUserForRefresh(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UnauthorizedException("User not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("User not found"));
 
         if (!user.isActive()) {
             throw new UnauthorizedException("Account is inactive");
@@ -57,12 +55,6 @@ public class UserService {
         return resolveCaller();
     }
 
-    /**
-     * Creates a new user from a validated UserCreateRequest DTO.
-    
-     * Only the fields a caller is allowed to supply (name, email, password, role) are mapped here.
-     * Fields like id, active, and createdAt are set internally, not sourced from the request, preventing callers from injecting arbitrary state.
-     */
     public User createUser(UserCreateRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("A user with this email already exists");
@@ -73,7 +65,6 @@ public class UserService {
         user.setEmail(request.getEmail());
         user.setPassword(encoder.encode(request.getPassword()));
         user.setRole(request.getRole());
-        // active defaults to true, createdAt defaults to LocalDateTime.now() — both set by the entity
 
         return userRepository.save(user);
     }
@@ -132,7 +123,7 @@ public class UserService {
         }
         return caller;
     }
-    
+
     // Exposed for cross-service authentication resolution
     public User resolveCaller() {
         String callerId = AuthContext.get();

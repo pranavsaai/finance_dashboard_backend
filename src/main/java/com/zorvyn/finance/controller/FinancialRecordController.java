@@ -37,17 +37,13 @@ public class FinancialRecordController {
     @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
     @GetMapping
     public ResponseEntity<List<FinancialRecordResponse>> getAll() {
-        return ResponseEntity.ok(recordService.getAllRecords()
-                .stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList()));
+        return ResponseEntity.ok(recordService.getAllRecords().stream().map(this::toResponse).collect(Collectors.toList()));
     }
 
     // ADMIN only
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
-    public ResponseEntity<FinancialRecordResponse> update(@PathVariable String id,
-                                                          @Valid @RequestBody FinancialRecordRequest request) {
+    public ResponseEntity<FinancialRecordResponse> update(@PathVariable String id, @Valid @RequestBody FinancialRecordRequest request) {
         return ResponseEntity.ok(toResponse(recordService.updateRecord(id, request)));
     }
 
@@ -82,10 +78,7 @@ public class FinancialRecordController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         PageResponse<FinancialRecord> raw = recordService.getPaginated(page, size);
-        List<FinancialRecordResponse> mapped = raw.getData()
-                .stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        List<FinancialRecordResponse> mapped = raw.getData().stream().map(this::toResponse).collect(Collectors.toList());
         return new PageResponse<>(mapped, raw.getPage(), raw.getSize(), raw.getTotal());
     }
 
