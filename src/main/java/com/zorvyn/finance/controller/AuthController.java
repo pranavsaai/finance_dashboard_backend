@@ -5,33 +5,24 @@ import com.zorvyn.finance.dto.LoginRequest;
 import com.zorvyn.finance.dto.RefreshRequest;
 import com.zorvyn.finance.entity.User;
 import com.zorvyn.finance.exception.UnauthorizedException;
-import com.zorvyn.finance.repository.UserRepository;
 import com.zorvyn.finance.security.JwtUtil;
+import com.zorvyn.finance.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final UserRepository userRepository;
+    private final UserService userService;
     private final JwtUtil jwtUtil;
-    private final BCryptPasswordEncoder encoder;
 
     @PostMapping("/login")
-    public AuthResponse login(@jakarta.validation.Valid @RequestBody LoginRequest request) {
+    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
 
-        User user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
-
-        if (!user.isActive()) {
-            throw new UnauthorizedException("Account is inactive");
-        }
-
-        if (!encoder.matches(request.getPassword(), user.getPassword())) {
-            throw new UnauthorizedException("Invalid credentials");
-        }
+        User user = userService.login(request.getEmail(), request.getPassword());
 
         String accessToken = jwtUtil.generateToken(user.getId(), user.getRole().name());
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
@@ -39,19 +30,18 @@ public class AuthController {
         return new AuthResponse(accessToken, refreshToken);
     }
 
-
     @PostMapping("/refresh")
-    public AuthResponse refresh(@jakarta.validation.Valid @RequestBody RefreshRequest request) {
+    public AuthResponse refresh(@Valid @RequestBody RefreshRequest request) {
 
         String refreshToken = request.getRefreshToken();
-        
+
         if (!jwtUtil.isRefreshToken(refreshToken)) {
             throw new UnauthorizedException("Invalid refresh token");
         }
 
         String userId = jwtUtil.extractUserId(refreshToken);
 
-        User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("User not found"));
+        User user = userService.getUserForRefresh(userId);
 
         String newAccessToken = jwtUtil.generateToken(userId, user.getRole().name());
 

@@ -60,7 +60,7 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{id}")
     public UserResponse update(@PathVariable String id,
-                              @RequestBody UserUpdateRequest request) {
+                               @Valid @RequestBody UserUpdateRequest request) {
         return toResponse(userService.updateUser(id, request));
     }
 

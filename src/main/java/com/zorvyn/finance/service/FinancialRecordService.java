@@ -1,5 +1,6 @@
 package com.zorvyn.finance.service;
 
+import com.zorvyn.finance.dto.FinancialRecordRequest;
 import com.zorvyn.finance.dto.PageResponse;
 import com.zorvyn.finance.entity.FinancialRecord;
 import com.zorvyn.finance.entity.RecordType;
@@ -18,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 
 @Service
@@ -29,11 +29,19 @@ public class FinancialRecordService {
     private final UserService userService;
 
     // ADMIN only
-    public FinancialRecord createRecord(FinancialRecord record) {
+    public FinancialRecord createRecord(FinancialRecordRequest request) {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
+
+        FinancialRecord record = new FinancialRecord();
+        record.setAmount(request.getAmount());
+        record.setType(request.getType());
+        record.setCategory(request.getCategory());
+        record.setDate(request.getDate());
+        record.setNotes(request.getNotes());
         record.setUserId(caller.getId());
         record.setDeleted(false);
+
         return recordRepository.save(record);
     }
 
@@ -45,7 +53,7 @@ public class FinancialRecordService {
     }
 
     // ADMIN only
-    public FinancialRecord updateRecord(String id, FinancialRecord updated) {
+    public FinancialRecord updateRecord(String id, FinancialRecordRequest request) {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
 
@@ -53,11 +61,11 @@ public class FinancialRecordService {
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
 
-        existing.setAmount(updated.getAmount());
-        existing.setType(updated.getType());
-        existing.setCategory(updated.getCategory());
-        existing.setDate(updated.getDate());
-        existing.setNotes(updated.getNotes());
+        existing.setAmount(request.getAmount());
+        existing.setType(request.getType());
+        existing.setCategory(request.getCategory());
+        existing.setDate(request.getDate());
+        existing.setNotes(request.getNotes());
 
         return recordRepository.save(existing);
     }
@@ -82,12 +90,9 @@ public class FinancialRecordService {
         LocalDate to,
         String search
     ) {
-
         User caller = userService.resolveCaller();
 
         String userId = null;
-
-        // Viewer restriction (example logic — adjust if needed)
         if (caller.getRole() == Role.VIEWER) {
             userId = caller.getId();
         }
@@ -111,7 +116,6 @@ public class FinancialRecordService {
     }
 
     public PageResponse<FinancialRecord> getPaginated(int page, int size) {
-
         User caller = userService.resolveCaller();
         assertNotViewer(caller);
 

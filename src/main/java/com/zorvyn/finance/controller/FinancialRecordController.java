@@ -1,5 +1,6 @@
 package com.zorvyn.finance.controller;
 
+import com.zorvyn.finance.dto.FinancialRecordRequest;
 import com.zorvyn.finance.dto.PageResponse;
 import com.zorvyn.finance.entity.FinancialRecord;
 import com.zorvyn.finance.entity.RecordType;
@@ -26,8 +27,8 @@ public class FinancialRecordController {
     // ADMIN only
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<FinancialRecord> create(@Valid @RequestBody FinancialRecord record) {
-        return new ResponseEntity<>(recordService.createRecord(record), HttpStatus.CREATED);
+    public ResponseEntity<FinancialRecord> create(@Valid @RequestBody FinancialRecordRequest request) {
+        return new ResponseEntity<>(recordService.createRecord(request), HttpStatus.CREATED);
     }
 
     // ANALYST + ADMIN
@@ -41,8 +42,8 @@ public class FinancialRecordController {
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public FinancialRecord update(@PathVariable String id,
-                                  @Valid @RequestBody FinancialRecord record) {
-        return recordService.updateRecord(id, record);
+                                  @Valid @RequestBody FinancialRecordRequest request) {
+        return recordService.updateRecord(id, request);
     }
 
     // ADMIN only - soft deletes the record (sets deleted=true, not removed from DB)
@@ -72,7 +73,6 @@ public class FinancialRecordController {
     public PageResponse<FinancialRecord> getPaginated(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-
         return recordService.getPaginated(page, size);
     }
 }

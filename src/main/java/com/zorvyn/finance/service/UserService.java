@@ -23,6 +23,33 @@ public class UserService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder encoder;
 
+    /**
+     * Validates credentials and returns the authenticated user.
+     * Throws UnauthorizedException for invalid email, wrong password, or inactive account.
+     */
+    public User login(String email, String rawPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
+
+        if (!user.isActive()) {
+            throw new UnauthorizedException("Account is inactive");
+        }
+
+        if (!encoder.matches(rawPassword, user.getPassword())) {
+            throw new UnauthorizedException("Invalid credentials");
+        }
+
+        return user;
+    }
+
+    /**
+     * Fetches a user by ID for token refresh.
+     * Throws UnauthorizedException if not found.
+     */
+    public User getUserForRefresh(String userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+    }
 
     public User createUser(User user) {
         if (userRepository.existsByEmail(user.getEmail())) {
@@ -33,7 +60,7 @@ public class UserService {
     }
 
     public List<User> getAllUsers() {
-        User caller = resolveCallerAsAdmin();
+        resolveCallerAsAdmin();
         return userRepository.findAll();
     }
 
@@ -63,7 +90,6 @@ public class UserService {
         return userRepository.save(user);
     }
 
-
     /**
      * Resolves the calling user from AuthContext and asserts they are ADMIN.
      */
@@ -80,15 +106,18 @@ public class UserService {
         if (callerId == null || callerId.isBlank()) {
             throw new UnauthorizedException("Missing or invalid authentication token");
         }
-        User caller = userRepository.findById(callerId).orElseThrow(() -> new ResourceNotFoundException("Caller user not found"));
+        User caller = userRepository.findById(callerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Caller user not found"));
         if (!caller.isActive()) {
             throw new UnauthorizedException("Account is inactive");
         }
         return caller;
     }
+
     public boolean isFirstUser() {
         return userRepository.count() == 0;
     }
+
     public void assertAdmin() {
         User caller = resolveCaller();
         if (caller.getRole() != Role.ADMIN) {

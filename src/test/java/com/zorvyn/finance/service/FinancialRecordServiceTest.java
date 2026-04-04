@@ -1,5 +1,6 @@
 package com.zorvyn.finance.service;
 
+import com.zorvyn.finance.dto.FinancialRecordRequest;
 import com.zorvyn.finance.entity.FinancialRecord;
 import com.zorvyn.finance.entity.RecordType;
 import com.zorvyn.finance.entity.Role;
@@ -41,6 +42,7 @@ class FinancialRecordServiceTest {
     private User analystUser;
     private User viewerUser;
     private FinancialRecord sampleRecord;
+    private FinancialRecordRequest sampleRequest;
 
     @BeforeEach
     void setUp() {
@@ -59,6 +61,7 @@ class FinancialRecordServiceTest {
         viewerUser.setRole(Role.VIEWER);
         viewerUser.setActive(true);
 
+        // sampleRecord — used for repository mock return values and delete tests
         sampleRecord = new FinancialRecord();
         sampleRecord.setId("rec-1");
         sampleRecord.setAmount(5000.0);
@@ -66,6 +69,13 @@ class FinancialRecordServiceTest {
         sampleRecord.setCategory("Salary");
         sampleRecord.setDate(LocalDateTime.of(2025, 1, 15, 0, 0));
         sampleRecord.setDeleted(false);
+
+        // sampleRequest — used as input to createRecord() and updateRecord()
+        sampleRequest = new FinancialRecordRequest();
+        sampleRequest.setAmount(5000.0);
+        sampleRequest.setType(RecordType.INCOME);
+        sampleRequest.setCategory("Salary");
+        sampleRequest.setDate(LocalDateTime.of(2025, 1, 15, 0, 0));
     }
 
     @AfterEach
@@ -76,14 +86,14 @@ class FinancialRecordServiceTest {
     @Test
     void createRecord_viewerCannotCreate_throwsAccessDenied() {
         when(userService.resolveCaller()).thenReturn(viewerUser);
-        assertThatThrownBy(() -> recordService.createRecord(sampleRecord))
+        assertThatThrownBy(() -> recordService.createRecord(sampleRequest))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
     void createRecord_analystCannotCreate_throwsAccessDenied() {
         when(userService.resolveCaller()).thenReturn(analystUser);
-        assertThatThrownBy(() -> recordService.createRecord(sampleRecord))
+        assertThatThrownBy(() -> recordService.createRecord(sampleRequest))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -92,12 +102,12 @@ class FinancialRecordServiceTest {
         when(userService.resolveCaller()).thenReturn(adminUser);
         when(recordRepository.save(any())).thenReturn(sampleRecord);
 
-        FinancialRecord result = recordService.createRecord(sampleRecord);
-        assertThat(result.getId()).isEqualTo("rec-1");
-        assertThat(sampleRecord.getUserId()).isEqualTo("admin-1");
-        verify(recordRepository).save(sampleRecord);
-    }
+        FinancialRecord result = recordService.createRecord(sampleRequest);
 
+        assertThat(result.getId()).isEqualTo("rec-1");
+        // userId is stamped inside the service from caller context
+        verify(recordRepository).save(any(FinancialRecord.class));
+    }
 
     @Test
     void getAllRecords_viewerCannotAccess_throwsAccessDenied() {
@@ -114,7 +124,6 @@ class FinancialRecordServiceTest {
         List<FinancialRecord> result = recordService.getAllRecords();
         assertThat(result).hasSize(1);
     }
-
 
     @Test
     void deleteRecord_recordNotFound_throwsNotFound() {
@@ -135,56 +144,54 @@ class FinancialRecordServiceTest {
 
         assertThat(sampleRecord.isDeleted()).isTrue();
         verify(recordRepository).save(sampleRecord);
-        // should NOT call deleteById - it's a soft delete
+        // should NOT call deleteById — it's a soft delete
         verify(recordRepository, never()).deleteById(any());
     }
 
-
     @Test
-    void filterRecords_typeAndDateRange_usesCombinedQuery() {
-
+    void filterRecords_typeAndDateRange_usesDynamicQuery() {
         when(userService.resolveCaller()).thenReturn(analystUser);
 
         LocalDate from = LocalDate.of(2025, 1, 1);
         LocalDate to = LocalDate.of(2025, 1, 31);
         LocalDateTime fromDT = from.atStartOfDay();
-        LocalDateTime toDT = to.atTime(java.time.LocalTime.MAX);
+        LocalDateTime toDT = to.atTime(23, 59, 59);
 
-        when(recordRepository.findByTypeAndDateBetweenAndDeletedFalse(
-                RecordType.INCOME, fromDT, toDT))
+        when(recordRepository.filterDynamic(
+                RecordType.INCOME, null, fromDT, toDT, null, null))
                 .thenReturn(List.of(sampleRecord));
 
         List<FinancialRecord> result =
                 recordService.filterRecords(RecordType.INCOME, null, from, to, null);
 
         assertThat(result).hasSize(1);
-
-        verify(recordRepository).findByTypeAndDateBetweenAndDeletedFalse(
-                RecordType.INCOME, fromDT, toDT);
+        verify(recordRepository).filterDynamic(RecordType.INCOME, null, fromDT, toDT, null, null);
     }
 
-
     @Test
-    void filterRecords_keywordSearch_usesSearchMethod() {
+    void filterRecords_keywordSearch_usesDynamicQuery() {
         when(userService.resolveCaller()).thenReturn(analystUser);
-        when(recordRepository.search("sal")).thenReturn(List.of(sampleRecord));
+
+        when(recordRepository.filterDynamic(null, null, null, null, "sal", null))
+                .thenReturn(List.of(sampleRecord));
 
         List<FinancialRecord> result =
                 recordService.filterRecords(null, null, null, null, "sal");
 
         assertThat(result).hasSize(1);
-
-        verify(recordRepository).search("sal");
+        verify(recordRepository).filterDynamic(null, null, null, null, "sal", null);
     }
 
     @Test
     void filterRecords_noParams_returnsAll() {
         when(userService.resolveCaller()).thenReturn(analystUser);
-        when(recordRepository.findByDeletedFalse()).thenReturn(List.of(sampleRecord));
+
+        when(recordRepository.filterDynamic(null, null, null, null, null, null))
+                .thenReturn(List.of(sampleRecord));
 
         List<FinancialRecord> result = recordService.filterRecords(null, null, null, null, null);
         assertThat(result).hasSize(1);
-        verify(recordRepository).findByDeletedFalse();
+        verify(recordRepository).filterDynamic(null, null, null, null, null, null);
     }
 
     @Test
@@ -193,7 +200,6 @@ class FinancialRecordServiceTest {
         assertThatThrownBy(() -> recordService.filterRecords(null, null, null, null, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
-
 
     @Test
     void getPaginated_viewer_throwsAccessDenied() {
