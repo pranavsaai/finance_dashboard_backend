@@ -132,7 +132,8 @@ public class UserService {
         }
         return caller;
     }
-
+    
+    // Exposed for cross-service authentication resolution
     public User resolveCaller() {
         String callerId = AuthContext.get();
         if (callerId == null || callerId.isBlank()) {

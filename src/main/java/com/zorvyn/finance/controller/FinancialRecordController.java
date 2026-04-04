@@ -36,19 +36,19 @@ public class FinancialRecordController {
     // ANALYST + ADMIN
     @PreAuthorize("hasAnyRole('ADMIN','ANALYST')")
     @GetMapping
-    public List<FinancialRecordResponse> getAll() {
-        return recordService.getAllRecords()
+    public ResponseEntity<List<FinancialRecordResponse>> getAll() {
+        return ResponseEntity.ok(recordService.getAllRecords()
                 .stream()
                 .map(this::toResponse)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()));
     }
 
     // ADMIN only
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
-    public FinancialRecordResponse update(@PathVariable String id,
-                                          @Valid @RequestBody FinancialRecordRequest request) {
-        return toResponse(recordService.updateRecord(id, request));
+    public ResponseEntity<FinancialRecordResponse> update(@PathVariable String id,
+                                                          @Valid @RequestBody FinancialRecordRequest request) {
+        return ResponseEntity.ok(toResponse(recordService.updateRecord(id, request)));
     }
 
     // ADMIN only — soft deletes the record (sets deleted=true, not removed from DB)

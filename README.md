@@ -769,7 +769,7 @@ Unit tests cover the service layer where business logic and access control rules
 
 ### User Password Management
 
-The current implementation does not include a password reset or update endpoint as in assessment mentioned admins can only manage users but passwords must be of users choice ..so i little bit confused there and thought to proceed it in future.
+The current implementation does not include a password reset or update endpoint as password updates were omitted as the assignment describes admin-managed users; a separate self-service reset flow would be the appropriate design.
 
 **Tradeoff**:
 User updates support name, email, role, and active status, but password changes require a separate flow (e.g., secure reset via email or admin-triggered reset).
