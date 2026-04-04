@@ -122,7 +122,7 @@ com.zorvyn.finance/
 │   ├── RefreshRequest.java                  # Refresh token payload
 │   ├── AuthResponse.java                    # Access + refresh token response
 │   ├── UserResponse.java                    # Safe user response (no password)
-│   ├── UserUpdateRequest.java               # Partial update: role and/or active
+│   ├── UserUpdateRequest.java               # Partial update: role, active, name, and/or email
 │   ├── DashboardSummary.java               # Aggregated dashboard response
 │   └── PageResponse.java                   # Generic paginated response wrapper
 │
@@ -235,7 +235,7 @@ The role model is three-tiered: `VIEWER`, `ANALYST`, `ADMIN`. Roles are stored a
 
 - **Create user**: `POST /api/users` — open for first user (bootstrap), ADMIN-only after
 - **Get current user**: `GET /api/users/me` — returns the authenticated user's profile using JWT (Small idea on my own, not mentioned in assessment but applicable in a real finance dashboard context in which allowing users to view their own profile securely)
-- **Update user**: `PATCH /api/users/{id}` — ADMIN can change role or toggle `active` status. Partial update — only non-null fields in the request body are applied
+- **Update user**: `PATCH /api/users/{id}` — ADMIN can change role, toggle `active` status, or update name and email. Partial update — only non-null fields in the request body are applied
 - **User state**: Deactivated users (`active: false`) are rejected in `resolveCaller()` before any business logic runs, even if they hold a valid token
 - **Password security**: BCrypt-hashed on creation. Plain text never stored. `UserResponse` DTO always excludes the password field
 
@@ -489,7 +489,7 @@ GET /api/records/filter?search=electricity&type=EXPENSE
 GET /api/records/filter?from=2025-01-01&to=2025-03-31
 ```
 
-**Errors:** `400` if `from` is after `to`
+**Errors:** `400` if only one of `from`/`to` is provided, or if `from` is after `to`
 
 ---
 
