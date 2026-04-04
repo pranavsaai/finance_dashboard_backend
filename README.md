@@ -315,12 +315,17 @@ Records are never physically removed from the database. `DELETE /api/records/{id
 
 ### 4.) Rate Limiting
 
-Rate limiting is implemented in `AuthFilter` using an in-memory `ConcurrentHashMap<String, Integer>` keyed by client IP address. Each request increments a counter, and once an IP exceeds 100 requests, subsequent requests are blocked with HTTP 429 ("Too many requests").
+Rate limiting is implemented in `AuthFilter` using an in-memory `ConcurrentHashMap` keyed by client IP address.
 
-**Current behavior and limitation**:
-- The counter tracks total requests per IP with no time window.
-- Once the limit is exceeded, the IP remains blocked until the application restarts.
-- The implementation is instance-local and does not work in distributed or multi-instance environments.
+Each IP is allowed up to **100 requests per minute**. The implementation uses a simple fixed time window approach:
+- Each IP maintains a request count and a window start timestamp.
+- If the time window (1 minute) expires, the counter resets automatically.
+- If the request count exceeds the limit within the window, the request is blocked with HTTP 429 ("Too many requests").
+
+**Current behavior and limitations**:
+- The implementation is instance-local and stored in memory, so it resets on application restart.
+- It does not work in distributed or multi-instance deployments.
+- The time window is fixed (not sliding), which may cause bursts at window boundaries.
 
 ### 5.) Unit Tests
 
@@ -698,7 +703,7 @@ Returns aggregated financial summary. Accessible by all roles (VIEWER, ANALYST, 
 ### Rate Limiting (In-Memory)
 The current implementation uses a ConcurrentHashMap<IP, count> in AuthFilter. This resets on restart and does not work in a multi-instance deployment as this approach was chosen for simplicity and to avoid introducing external dependencies, making it suitable for local development and assessment scope
 
-**Planned improvement**: In a production system, this would be replaced with a time-based rate limiting strategy (e.g., sliding window or token bucket) using a distributed store like Redis. Tools such as Bucket4j with Redis support would enable limits like "100 requests per minute per IP" and ensure consistency across multiple application instances.
+**Planned improvement**: In a production system, this would be replaced with a distributed rate limiter using Redis and a sliding window or token bucket algorithm. Libraries such as Bucket4j (with Redis support) would allow fine-grained limits like "100 requests per minute per IP" across multiple instances.
 
 ### Bootstrap User Creation (Public Endpoint)
 The /api/users endpoint is intentionally left permitAll() to allow initial system bootstrapping (first admin creation). After the first user is created, access is restricted via application-level checks.
