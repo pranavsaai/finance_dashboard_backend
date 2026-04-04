@@ -117,7 +117,7 @@ JWT payload contains:
 - `sub`: userId
 - `role`: VIEWER / ANALYST / ADMIN
 - `iat`: issued at
-- `exp`: expiry (24 hours)
+- `exp`: expiry (15 minutes)
 
 ### 3. Authenticated Request Flow
 
@@ -373,7 +373,7 @@ The Spring context integration test (`FinanceApplicationTests`) requires a local
 | `MONGO_URI_FINANCE` | MongoDB connection URI | `mongodb://localhost:27017/finance_db` |
 | `JWT_SECRET_FINANCE` | Secret key for JWT signing (min 32 chars) | `my-super-secret-finance-key-2025` |
 
-JWT tokens expire after **24 hours** (`jwt.expiration=86400000` ms).
+Access tokens expire after 15 minutes 
 
 ---
 
