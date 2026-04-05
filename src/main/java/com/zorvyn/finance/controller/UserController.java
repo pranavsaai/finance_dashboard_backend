@@ -5,15 +5,12 @@ import com.zorvyn.finance.dto.UserResponse;
 import com.zorvyn.finance.dto.UserUpdateRequest;
 import com.zorvyn.finance.entity.User;
 import com.zorvyn.finance.service.UserService;
-
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,13 +21,9 @@ public class UserController {
 
     private final UserService userService;
 
-    // POST /api/users is publicly accessible during bootstrap (first user only).
-    // Once the first user exists, only an authenticated ADMIN may create further users.
-    // The bootstrap guard is enforced in UserService.createUser(), not here,
-    // so this endpoint intentionally has no @PreAuthorize.
+    // open only while DB is empty; assertAdmin() guards everything after bootstrap
     @PostMapping
     public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request) {
-
         if (userService.isFirstUser()) {
             if (request.getRole() != com.zorvyn.finance.entity.Role.ADMIN) {
                 throw new IllegalArgumentException("First user must have ADMIN role");
@@ -39,9 +32,7 @@ public class UserController {
             return new ResponseEntity<>(toResponse(saved), HttpStatus.CREATED);
         }
 
-        // After bootstrap — only ADMIN allowed
         userService.assertAdmin();
-
         User saved = userService.createUser(request);
         return new ResponseEntity<>(toResponse(saved), HttpStatus.CREATED);
     }

@@ -24,7 +24,7 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Map<String, long[]> requestCount = new ConcurrentHashMap<>();
 
     private static final int MAX_REQUESTS = 100;
-    private static final long WINDOW_MS = 60_000; // 1 minute
+    private static final long WINDOW_MS = 60_000;
     private static final long STALE_THRESHOLD_MS = WINDOW_MS * 2;
 
     @Override
@@ -32,19 +32,16 @@ public class AuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         try {
-
             String ip = request.getRemoteAddr();
             long now = System.currentTimeMillis();
 
-            // Probabilistic stale-entry pruning (~0.1% of requests).
-            // Keeps memory bounded without a dedicated cleanup thread.
+            // ~0.1% chance — clears stale IPs without needing a background thread
             if (Math.random() < 0.001) {
                 requestCount.entrySet().removeIf(e -> now - e.getValue()[1] > STALE_THRESHOLD_MS);
             }
 
-            // Atomic read-modify-write via compute() prevents the race condition where two
-            // concurrent requests from the same IP both read count=0, both increment to 1,
-            // and both bypass the limit. long[]: [0] = request count, [1] = window start time.
+            // compute() makes this atomic — plain get+put has a race condition at high concurrency
+            // long[0] = request count, long[1] = window start time
             final long[][] result = new long[1][];
             requestCount.compute(ip, (key, existing) -> {
                 if (existing == null || now - existing[1] > WINDOW_MS) {
@@ -70,11 +67,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 String token = header.substring(7);
 
                 try {
-                    // Reject refresh tokens presented as Bearer access tokens.
-                    // Without this check, a refresh token passes signature validation,
-                    // extractRole() returns null, and the SecurityContext is set with
-                    // ROLE_null — wrong behavior even though @PreAuthorize would eventually
-                    // reject the request downstream.
+                    // refresh tokens carry no role claim — reject before touching SecurityContext
                     if (jwtUtil.isRefreshToken(token)) {
                         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                         response.setContentType("application/json");
@@ -86,13 +79,11 @@ public class AuthFilter extends OncePerRequestFilter {
                     AuthContext.set(userId);
 
                     String role = jwtUtil.extractRole(token);
-
                     List<SimpleGrantedAuthority> authorities =
                             List.of(new SimpleGrantedAuthority("ROLE_" + role));
 
                     UsernamePasswordAuthenticationToken auth =
                             new UsernamePasswordAuthenticationToken(userId, null, authorities);
-
                     SecurityContextHolder.getContext().setAuthentication(auth);
 
                 } catch (Exception e) {
@@ -106,8 +97,7 @@ public class AuthFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
 
         } finally {
-            // Always clear the ThreadLocal — prevents userId from leaking into the next
-            // request if the thread is reused from the servlet container pool.
+            // always clear ThreadLocal — thread pool reuse would leak userId into next request
             AuthContext.clear();
         }
     }

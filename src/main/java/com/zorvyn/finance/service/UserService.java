@@ -11,11 +11,8 @@ import com.zorvyn.finance.repository.UserRepository;
 import com.zorvyn.finance.security.AuthContext;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 
 @Service
@@ -40,9 +37,7 @@ public class UserService {
         return user;
     }
 
-    // Fetches a user by ID for token refresh.
-    // Also checks isActive() — a deactivated user must not be able to obtain
-    // new access tokens via a still-valid refresh token.
+    // also checks isActive() — a valid refresh token doesn't mean active account
     public User getUserForRefresh(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
@@ -59,12 +54,7 @@ public class UserService {
     }
 
     public User createUser(UserCreateRequest request) {
-        // Application-level duplicate check gives a friendly 400 error message.
-        // The unique index on email (MongoDB level) is a safety net that handles the
-        // concurrent bootstrap race condition: if two requests slip past this check
-        // simultaneously, the second save throws DuplicateKeyException, which is caught
-        // by GlobalExceptionHandler and returned as a 400. No phantom duplicate users
-        // can be created.
+        // app-level check for a clean error message; unique index is the real safety net
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("A user with this email already exists");
         }
@@ -78,9 +68,7 @@ public class UserService {
         try {
             return userRepository.save(user);
         } catch (DuplicateKeyException e) {
-            // Catches the concurrent-bootstrap race where two requests both passed the
-            // existsByEmail() check before either committed. The unique index makes this
-            // safe at the database level.
+            // catches the rare concurrent-save race the check above can't prevent
             throw new IllegalArgumentException("A user with this email already exists");
         }
     }
@@ -99,9 +87,7 @@ public class UserService {
     public User updateUser(String id, UserUpdateRequest request) {
         User caller = resolveCallerAsAdmin();
 
-        // Prevent admin from modifying their own role or active status.
-        // Changing their own role to a lower one, or deactivating themselves,
-        // would cause an immediate lockout with no way to recover.
+        // changing own role or deactivating self = instant lockout, no recovery
         if (caller.getId().equals(id)) {
             if (request.getRole() != null && request.getRole() != caller.getRole()) {
                 throw new IllegalArgumentException("Admin cannot change their own role");
@@ -114,15 +100,9 @@ public class UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
 
-        if (request.getRole() != null) {
-            user.setRole(request.getRole());
-        }
-        if (request.getActive() != null) {
-            user.setActive(request.getActive());
-        }
-        if (request.getName() != null) {
-            user.setName(request.getName());
-        }
+        if (request.getRole() != null) user.setRole(request.getRole());
+        if (request.getActive() != null) user.setActive(request.getActive());
+        if (request.getName() != null) user.setName(request.getName());
         if (request.getEmail() != null) {
             if (!user.getEmail().equals(request.getEmail()) && userRepository.existsByEmail(request.getEmail())) {
                 throw new IllegalArgumentException("A user with this email already exists");
@@ -133,7 +113,6 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    // Resolves the calling user from AuthContext and asserts they are ADMIN.
     private User resolveCallerAsAdmin() {
         User caller = resolveCaller();
         if (caller.getRole() != Role.ADMIN) {
@@ -142,9 +121,7 @@ public class UserService {
         return caller;
     }
 
-    // Exposed for cross-service authentication resolution.
-    // Fetches the live user from the database on every call as this is intentional.
-    // It catches users deactivated after login, which JWT claims alone cannot detect.
+    // live DB fetch — catches deactivated users that stale JWTs would miss
     public User resolveCaller() {
         String callerId = AuthContext.get();
         if (callerId == null || callerId.isBlank()) {

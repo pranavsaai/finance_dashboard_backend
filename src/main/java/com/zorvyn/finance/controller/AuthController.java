@@ -21,23 +21,17 @@ public class AuthController {
 
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-
         User user = userService.login(request.getEmail(), request.getPassword());
-
         String accessToken = jwtUtil.generateToken(user.getId(), user.getRole().name());
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
-
         return new AuthResponse(accessToken, refreshToken);
     }
 
     @PostMapping("/refresh")
     public AuthResponse refresh(@Valid @RequestBody RefreshRequest request) {
-
         String refreshToken = request.getRefreshToken();
 
-        // validateRefreshTokenAndExtractUserId() validates the token signature, expiry,
-        // and type claim in a single parse — previously isRefreshToken() and extractUserId()
-        // each parsed the token independently, doubling the work.
+        // single parse — handles signature, expiry, and type check together
         String userId;
         try {
             userId = jwtUtil.validateRefreshTokenAndExtractUserId(refreshToken);
@@ -46,9 +40,7 @@ public class AuthController {
         }
 
         User user = userService.getUserForRefresh(userId);
-
         String newAccessToken = jwtUtil.generateToken(userId, user.getRole().name());
-
         return new AuthResponse(newAccessToken, refreshToken);
     }
 }

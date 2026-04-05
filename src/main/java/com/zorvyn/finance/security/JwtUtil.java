@@ -28,7 +28,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim("role", role)
-                .claim("type", "access")          // explicit type claim — makes isRefreshToken() unambiguous
+                .claim("type", "access") // lets us distinguish from refresh tokens
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))
                 .signWith(getSigningKey())
@@ -53,13 +53,12 @@ public class JwtUtil {
         return parseClaims(token).get("role", String.class);
     }
 
-    // Checks whether the token is a refresh token by reading the "type" claim.
-    // Access tokens now explicitly carry type=access, so this is an exact match
-    // rather than a null check , both token types are unambiguous.
+    // type claim check — both token types are explicit so this is unambiguous
     public boolean isRefreshToken(String token) {
         return "refresh".equals(parseClaims(token).get("type", String.class));
     }
 
+    // validates type claim, not just signature
     public String validateRefreshTokenAndExtractUserId(String token) {
         Claims claims = parseClaims(token);
         if (!"refresh".equals(claims.get("type", String.class))) {
