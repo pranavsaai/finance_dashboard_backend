@@ -8,6 +8,7 @@ A role-based finance backend built with Java 17, Spring Boot 3, and MongoDB. Han
 
 - [The Problem I Was Solving](#the-problem-i-was-solving)
 - [Key Design Decisions](#key-design-decisions)
+- [Edge Cases Handled](#edge-cases-handled)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Data Model](#data-model)
@@ -99,6 +100,115 @@ Stale entries are pruned probabilistically on ~0.1% of requests, keeping memory 
 ### 9. Password minimum length validation
 
 `UserCreateRequest` validates `password` with both `@NotBlank` and `@Size(min = 8)`. A blank password is rejected by the former; a single-character password is rejected by the latter. Both cases return a field-level 400 with a clear message before any BCrypt operation runs.
+
+---
+
+## Edge Cases Handled
+
+This section documents every non-obvious scenario that the system handles explicitly — cases that are easy to miss but quietly break real systems when they're not accounted for.
+
+---
+
+### 1. User deactivated after login — JWT still valid
+
+**The problem:** A user logs in and receives a valid JWT. An admin then deactivates their account. The JWT does not expire for another 14 minutes. A pure annotation-based security check (`@PreAuthorize`) reads the role from the token — it was valid at login time, so it still passes. The deactivated user can keep making requests.
+
+**Why this matters:** In a financial system, revoking access needs to take effect immediately — not after token expiry.
+
+**How it is handled:** Every service method calls `resolveCaller()` before executing any logic. `resolveCaller()` fetches the live user from the database on every request and checks `isActive()`. If the account has been deactivated since the token was issued, the request is rejected with 401 — regardless of whether the JWT is still cryptographically valid. The token expiry and the account status are independent checks, and both must pass.
+
+---
+
+### 2. Refresh token used as a Bearer access token
+
+**The problem:** The system issues two token types — an access token (15 min) and a refresh token (7 days). If a client accidentally sends the refresh token in the `Authorization: Bearer` header instead of the access token, the token passes signature validation (same signing key). `extractRole()` then returns null because refresh tokens carry no role claim. The SecurityContext gets set with `ROLE_null` — the request doesn't crash, but the security state is silently wrong.
+
+**Why this matters:** A silent wrong state is worse than a visible failure. The system should reject misuse of token types loudly and immediately.
+
+**How it is handled:** Both token types carry an explicit `type` claim — `"type": "access"` and `"type": "refresh"`. In `AuthFilter`, before extracting any claims from a Bearer token, `jwtUtil.isRefreshToken()` is called. If the Bearer token is a refresh token, the request is rejected immediately with 401 and a clear error message. The check happens before `SecurityContext` is set, so nothing leaks through.
+
+---
+
+### 3. Concurrent bootstrap — two admins created simultaneously
+
+**The problem:** `POST /api/users` is publicly accessible only while the user collection is empty. The first-user check is `userRepository.count() == 0`. In a scenario where two requests arrive simultaneously before either commits, both see count = 0, both pass the check, and both attempt to save — potentially creating two admin users with conflicting state.
+
+**Why this matters:** Bootstrap is a one-time critical operation. Any ambiguity in the initial admin state could leave the system in an inconsistent or insecure starting condition.
+
+**How it is handled in two layers:**
+
+- **Application layer:** `userRepository.existsByEmail()` checks for duplicate email before saving and returns a clean 400.
+- **Database layer:** The `email` field has a unique index (`@Indexed(unique = true)`) at the MongoDB level. Even if two requests slip past the application-layer check simultaneously, the second `save()` throws `DuplicateKeyException` at the database level. `GlobalExceptionHandler` catches this and converts it to a clean 400. No phantom duplicate user is ever persisted.
+
+---
+
+### 4. Admin locking themselves out
+
+**The problem:** An admin sends a `PATCH /api/users/{their-own-id}` request that either changes their own role to VIEWER or sets their own `active` to false. Either way, they immediately lose access to the system with no recovery path — no other admin may exist to restore them.
+
+**Why this matters:** A self-inflicted lockout in a role-based system is a permanent problem if not guarded. There is no sudo or superuser recovery path here.
+
+**How it is handled:** In `UserService.updateUser()`, before applying any changes, the caller's ID is compared to the target ID. If they match, two additional checks run: whether the request tries to change the role away from ADMIN, and whether it tries to set `active` to false. Either attempt returns 400 with a clear message. The admin can update any other user freely — the guard applies only to self-modification of role and active status.
+
+---
+
+### 5. Inverted or incomplete date range in filter
+
+**The problem:** The filter endpoint accepts `from` and `to` as optional date range parameters. A caller could send only `from` without `to` (or vice versa), or send a `from` that is after `to`. Both produce silently wrong results if not explicitly rejected — a half-specified range returns unintended data, and an inverted range returns nothing with no indication of why.
+
+**Why this matters:** Silent wrong results are harder to debug than explicit errors. A caller who sends `from=2025-12-01&to=2025-01-01` should be told the range is invalid, not receive an empty list.
+
+**How it is handled:** In `FinancialRecordService.filterRecords()`, two validations run before the query is built. If exactly one of `from` / `to` is provided, a 400 is returned with the message "Both 'from' and 'to' must be provided together." If both are provided but `from` is after `to`, a 400 is returned with the message "'from' date must not be after 'to' date." Both checks happen before any database call.
+
+---
+
+### 6. Unbounded page size on paginated endpoint
+
+**The problem:** The paginated endpoint accepts a `size` parameter. Without a cap, a client can request `size=100000`, pulling the entire dataset in one response — defeating the purpose of pagination and potentially exhausting memory.
+
+**Why this matters:** Unbounded client-controlled parameters are a common vector for accidental or intentional resource exhaustion.
+
+**How it is handled:** `FinancialRecordService.getPaginated()` validates `size` explicitly. If `size` is less than 1 or greater than 100, a 400 is returned before the query runs. The cap is also documented in the API section so callers understand the constraint upfront.
+
+---
+
+### 7. Accessing a soft-deleted record by ID
+
+**The problem:** Records are soft-deleted by setting `deleted = true`. They remain in the database. A caller who knows a record's ID could call `GET /api/records/{id}` and retrieve a record that has been "deleted" — because a naive `findById()` does not filter on the `deleted` field.
+
+**Why this matters:** From the caller's perspective, deleted records should not exist. Returning one would be a consistency violation — the record appears gone from list views but reachable by direct ID.
+
+**How it is handled:** Every `findById()` call in the service layer is chained with `.filter(r -> !r.isDeleted())`. If the record exists but is marked deleted, the filter discards it and the result is an empty `Optional`, which throws `ResourceNotFoundException` — the same 404 a caller would get for a genuinely nonexistent record. The `deleted` field never appears in any API response (`@JsonIgnore`).
+
+---
+
+### 8. ThreadLocal leaking across requests
+
+**The problem:** `AuthContext` uses a `ThreadLocal<String>` to carry the authenticated user's ID from `AuthFilter` into the service layer without passing it through every method signature. Servlet containers reuse threads from a pool. If the ThreadLocal is not explicitly cleared after each request, the next request handled by the same thread inherits the previous request's user ID — a serious security leak.
+
+**Why this matters:** ThreadLocal leaks in a thread-pool environment can cause one user's identity to bleed into another user's request, corrupting access control silently.
+
+**How it is handled:** `AuthContext.clear()` is called in the `finally` block of `AuthFilter.doFilterInternal()`. The `finally` block runs regardless of whether the request succeeds, throws, or returns early (rate limit, bad token, etc.). The ThreadLocal is always cleaned up before the thread returns to the pool. Tests also call `AuthContext.clear()` in `@AfterEach` to prevent state leakage between test cases.
+
+---
+
+### 9. Race condition in per-IP rate limiting
+
+**The problem:** The rate limiter tracks request counts per IP in a `ConcurrentHashMap`. The naive approach — `get()` the current count, increment it, then `put()` it back — has a race condition. Two concurrent requests from the same IP can both read `count = 99`, both increment to 100, and both write 100 back. Both pass the limit check even though together they should have triggered it.
+
+**Why this matters:** A rate limiter with a race condition provides weaker guarantees than advertised — at high concurrency, the effective limit is higher than configured.
+
+**How it is handled:** `ConcurrentHashMap.compute()` is used instead of get + put. `compute()` executes the read-modify-write as a single atomic operation — no two threads can interleave their reads and writes for the same key. The count is always consistent regardless of concurrency level.
+
+---
+
+### 10. `userId` injected from request body
+
+**The problem:** Financial records carry a `userId` field that links them to the creating user. If `userId` were accepted from the request body, a caller could stamp any arbitrary user ID onto a record — creating records attributed to someone else, or manipulating audit trails.
+
+**Why this matters:** In a financial system, record ownership must be derived from the authenticated identity, not trusted from caller input.
+
+**How it is handled:** `FinancialRecordRequest` (the creation DTO) has no `userId` field. The field does not exist in the contract. In `FinancialRecordService.createRecord()`, `userId` is set from `caller.getId()` — the ID extracted from the authenticated JWT by `resolveCaller()`. A caller cannot influence which user ID gets stamped on a record.
 
 ---
 
