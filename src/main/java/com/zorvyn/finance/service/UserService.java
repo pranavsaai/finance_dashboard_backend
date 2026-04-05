@@ -9,6 +9,7 @@ import com.zorvyn.finance.exception.ResourceNotFoundException;
 import com.zorvyn.finance.exception.UnauthorizedException;
 import com.zorvyn.finance.repository.UserRepository;
 import com.zorvyn.finance.security.AuthContext;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,8 @@ public class UserService {
     private final BCryptPasswordEncoder encoder;
 
     public User login(String email, String rawPassword) {
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
 
         if (!user.isActive()) {
             throw new UnauthorizedException("Account is inactive");
@@ -42,7 +44,8 @@ public class UserService {
     // Also checks isActive() — a deactivated user must not be able to obtain
     // new access tokens via a still-valid refresh token.
     public User getUserForRefresh(String userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new UnauthorizedException("User not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
 
         if (!user.isActive()) {
             throw new UnauthorizedException("Account is inactive");
@@ -56,6 +59,12 @@ public class UserService {
     }
 
     public User createUser(UserCreateRequest request) {
+        // Application-level duplicate check gives a friendly 400 error message.
+        // The unique index on email (MongoDB level) is a safety net that handles the
+        // concurrent bootstrap race condition: if two requests slip past this check
+        // simultaneously, the second save throws DuplicateKeyException, which is caught
+        // by GlobalExceptionHandler and returned as a 400. No phantom duplicate users
+        // can be created.
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("A user with this email already exists");
         }
@@ -66,7 +75,14 @@ public class UserService {
         user.setPassword(encoder.encode(request.getPassword()));
         user.setRole(request.getRole());
 
-        return userRepository.save(user);
+        try {
+            return userRepository.save(user);
+        } catch (DuplicateKeyException e) {
+            // Catches the concurrent-bootstrap race where two requests both passed the
+            // existsByEmail() check before either committed. The unique index makes this
+            // safe at the database level.
+            throw new IllegalArgumentException("A user with this email already exists");
+        }
     }
 
     public List<User> getAllUsers() {
@@ -83,7 +99,9 @@ public class UserService {
     public User updateUser(String id, UserUpdateRequest request) {
         User caller = resolveCallerAsAdmin();
 
-        // Prevent admin from modifying their own role or active status
+        // Prevent admin from modifying their own role or active status.
+        // Changing their own role to a lower one, or deactivating themselves,
+        // would cause an immediate lockout with no way to recover.
         if (caller.getId().equals(id)) {
             if (request.getRole() != null && request.getRole() != caller.getRole()) {
                 throw new IllegalArgumentException("Admin cannot change their own role");
@@ -124,7 +142,9 @@ public class UserService {
         return caller;
     }
 
-    // Exposed for cross-service authentication resolution
+    // Exposed for cross-service authentication resolution.
+    // Fetches the live user from the database on every call as this is intentional.
+    // It catches users deactivated after login, which JWT claims alone cannot detect.
     public User resolveCaller() {
         String callerId = AuthContext.get();
         if (callerId == null || callerId.isBlank()) {

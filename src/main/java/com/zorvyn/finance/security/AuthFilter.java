@@ -31,15 +31,20 @@ public class AuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
-        try { 
+        try {
 
             String ip = request.getRemoteAddr();
             long now = System.currentTimeMillis();
 
+            // Probabilistic stale-entry pruning (~0.1% of requests).
+            // Keeps memory bounded without a dedicated cleanup thread.
             if (Math.random() < 0.001) {
                 requestCount.entrySet().removeIf(e -> now - e.getValue()[1] > STALE_THRESHOLD_MS);
             }
 
+            // Atomic read-modify-write via compute() prevents the race condition where two
+            // concurrent requests from the same IP both read count=0, both increment to 1,
+            // and both bypass the limit. long[]: [0] = request count, [1] = window start time.
             final long[][] result = new long[1][];
             requestCount.compute(ip, (key, existing) -> {
                 if (existing == null || now - existing[1] > WINDOW_MS) {
@@ -65,6 +70,18 @@ public class AuthFilter extends OncePerRequestFilter {
                 String token = header.substring(7);
 
                 try {
+                    // Reject refresh tokens presented as Bearer access tokens.
+                    // Without this check, a refresh token passes signature validation,
+                    // extractRole() returns null, and the SecurityContext is set with
+                    // ROLE_null — wrong behavior even though @PreAuthorize would eventually
+                    // reject the request downstream.
+                    if (jwtUtil.isRefreshToken(token)) {
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json");
+                        response.getWriter().write("{\"error\": \"Refresh tokens cannot be used as access tokens\"}");
+                        return;
+                    }
+
                     String userId = jwtUtil.extractUserId(token);
                     AuthContext.set(userId);
 
@@ -89,6 +106,8 @@ public class AuthFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
 
         } finally {
+            // Always clear the ThreadLocal — prevents userId from leaking into the next
+            // request if the thread is reused from the servlet container pool.
             AuthContext.clear();
         }
     }

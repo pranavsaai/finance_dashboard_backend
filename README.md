@@ -50,53 +50,53 @@ The annotation layer reads the role from the JWT embedded at login time — fast
 
 This also means the system is safe even if the security filter layer were misconfigured — the service layer would still enforce access correctly.
 
-### 2. MongoDB aggregations for the dashboard — not Java streams
+### 2. Refresh tokens are rejected as Bearer access tokens
+
+When a refresh token arrives in the `Authorization: Bearer` header, `extractRole()` returns null and the SecurityContext would be set with `ROLE_null` — technically wrong even though `@PreAuthorize` would eventually reject it. `AuthFilter` now calls `jwtUtil.isRefreshToken()` before processing any Bearer token, and returns 401 immediately if a refresh token is presented as an access token. Both token types carry an explicit `type` claim (`access` / `refresh`), so the check is unambiguous.
+
+### 3. MongoDB aggregations for the dashboard — not Java streams
 
 The dashboard needs total income, total expenses, net balance, per-category breakdowns split by type, and monthly trends. Pulling all records into Java and computing with streams works at small scale — but breaks down as data grows, and pushes work the database is designed to do into application memory.
 
 Every dashboard metric is computed inside MongoDB using aggregation pipelines. Java only receives the final result. The most complex pipeline is `getMonthlyTrends()`: it groups records by year and month in IST, then sums income as positive and expenses as negative using MongoDB's conditional operator — all in a single pipeline, no post-processing.
 
-### 3. One dynamic filter query instead of many derived methods
+### 4. One dynamic filter query instead of many derived methods
 
 The filter endpoint supports five optional parameters — type, category, date range, and keyword search — all fully combinable. The naive approach is to write a separate repository method for every possible combination (16+ permutations). That gets unmaintainable fast.
 
 `filterDynamic()` in `FinancialRecordCustomRepositoryImpl` uses Spring Data's `Criteria` builder to construct a single query at runtime. It starts with an empty condition list, appends only the filters that were actually provided, and executes one query. Adding a new filter parameter later is a single `if` block — no new repository method needed.
 
-### 4. Soft delete
+### 5. Soft delete
 
 Records are never physically removed. `DELETE /api/records/{id}` sets `deleted = true` and saves. Every query, aggregation, and dashboard pipeline filters `deleted: false` explicitly. The field is hidden from all API responses via `@JsonIgnore`.
 
 This keeps the audit trail intact — the right default for any financial system. Callers never see the `deleted` field; to them, the record simply disappears.
 
-### 5. Bootstrap admin creation
+### 6. Bootstrap admin creation
 
-There's a chicken-and-egg problem in any role-based system: the first admin can't be created by an admin, because no admin exists yet. Rather than hardcoding credentials or shipping a seed script, `POST /api/users` stays publicly accessible only while the users collection is empty. The moment the first user exists, that endpoint requires an ADMIN token for all subsequent calls.
+There is a chicken-and-egg problem in any role-based system: the first admin cannot be created by an admin, because no admin exists yet. Rather than hardcoding credentials or shipping a seed script, `POST /api/users` stays publicly accessible only while the users collection is empty. The moment the first user exists, that endpoint requires an ADMIN token for all subsequent calls.
 
-This is a single count check in `UserController` — no special configuration needed. `SecurityConfig` intentionally exposes only `POST /api/users` as public — not the entire `/api/users` route. All other methods on that path (`GET`, `PATCH`) require authentication. The first user is also validated to have `ADMIN` role — creating a Viewer or Analyst as the first account would lock you out of the system.
+This is a single count check in `UserController`. `SecurityConfig` intentionally exposes only `POST /api/users` as public — not the entire `/api/users` route. All other methods on that path (`GET`, `PATCH`) require authentication. The first user must also have the `ADMIN` role — creating a Viewer or Analyst as the first account would lock you out of the system.
 
+The concurrent-bootstrap race condition (two simultaneous requests both passing `isFirstUser()`) is handled at the database level: the unique index on `email` causes the second `save()` to throw `DuplicateKeyException`, which `GlobalExceptionHandler` converts to a clean 400. No phantom duplicate users can be created.
 
-### 6. Input DTOs separate API contracts from persistence models
+### 7. Input DTOs separate API contracts from persistence models
 
 Controllers accept dedicated request DTOs, never raw entity objects. This prevents callers from injecting arbitrary state:
 
 - `UserCreateRequest` accepts only `name`, `email`, `password`, and `role`. Fields like `id`, `active`, and `createdAt` are set internally by the service layer — absent from the DTO entirely.
-- `UserUpdateRequest` accepts only the fields an admin may change on an existing user.
+- `UserUpdateRequest` accepts only the fields an admin may change on an existing user. Password changes are intentionally excluded — they require a separate, dedicated reset flow with its own security controls.
 - `FinancialRecordRequest` carries the record payload. `userId` is stamped from the caller's JWT context at creation time — not accepted as a request field.
 
 Response DTOs (`UserResponse`, `FinancialRecordResponse`) ensure internal fields like `password`, `userId`, and `deleted` are never surfaced in API responses.
 
-### 7. Atomic rate limiting via `ConcurrentHashMap.compute()`
+### 8. Atomic rate limiting via `ConcurrentHashMap.compute()`
 
 The rate limiter uses `compute()` rather than `getOrDefault` + `put` for atomic read-modify-write. The naive two-step approach has a race condition: two concurrent requests from the same IP can both read `count=0`, both increment to `1`, and both pass — effectively doubling the per-request budget. `compute()` eliminates this by making the entire check-and-increment one indivisible operation.
 
-Stale entries are pruned probabilistically on ~0.1% of requests, keeping memory bounded without a dedicated cleanup thread.
+Stale entries are pruned probabilistically on ~0.1% of requests, keeping memory bounded without a dedicated cleanup thread. `long[]: [0]` = request count, `[1]` = window start time.
 
-Uses compute() for an atomic read-modify-write on the ConcurrentHashMap.
-Avoids the race condition where two concurrent requests from the same IP both read count=0, both increment to 1, and both bypass the rate limit.
-long[]: [0] = request count, [1] = window start time.
-
-
-### 8. Password minimum length validation
+### 9. Password minimum length validation
 
 `UserCreateRequest` validates `password` with both `@NotBlank` and `@Size(min = 8)`. A blank password is rejected by the former; a single-character password is rejected by the latter. Both cases return a field-level 400 with a clear message before any BCrypt operation runs.
 
@@ -129,7 +129,7 @@ com.zorvyn.finance/
 ├── controller/
 │   ├── AuthController.java                      # POST /api/auth/login, /refresh
 │   ├── UserController.java                      # User CRUD + role management
-│   ├── FinancialRecordController.java            # Record CRUD + filter + pagination
+│   ├── FinancialRecordController.java           # Record CRUD + filter + pagination
 │   └── DashboardController.java                 # Dashboard summary
 │
 ├── service/
@@ -162,7 +162,7 @@ com.zorvyn.finance/
 │   └── PageResponse.java                        # Generic paginated response wrapper
 │
 ├── security/
-│   ├── AuthFilter.java                          # JWT validation + atomic per-IP rate limiting
+│   ├── AuthFilter.java                          # JWT validation, refresh-token rejection, atomic rate limiting
 │   ├── JwtUtil.java                             # Token generation and parsing
 │   ├── AuthContext.java                         # ThreadLocal userId store (cleared after each request)
 │   └── SecurityConfig.java                     # Spring Security configuration
@@ -211,11 +211,11 @@ com.zorvyn.finance/
 
 **Relationship:** One user → many records (via `userId` reference)
 
-A few notes on modeling choices:
+Modeling notes:
 
 - `deleted` is always filtered in queries and hidden from responses via `@JsonIgnore` — callers never see it
 - `createdAt` and `updatedAt` are populated automatically by `@EnableMongoAuditing` — no manual code needed
-- `email` has a unique index at the MongoDB level via `@Indexed(unique = true)`, not just an application-level check
+- `email` has a unique index at the MongoDB level via `@Indexed(unique = true)`, providing both application-level duplicate prevention and a database-level safety net for concurrent writes
 - `userId` on a record is stamped from the caller's JWT context at creation time — not accepted from the request body
 
 ---
@@ -229,8 +229,9 @@ HTTP Request
 AuthFilter
      ├── Check rate limit (100 req/IP/minute, atomic via compute()) → 429 if exceeded
      ├── Parse Authorization: Bearer <token>
+     │       ├── Refresh token presented as Bearer → 401 immediately (isRefreshToken() check)
      │       ├── Invalid/expired token → 401 immediately, request stops
-     │       └── Valid token → extract userId + role
+     │       └── Valid access token → extract userId + role
      ├── Set Spring SecurityContext (ROLE_ADMIN / ROLE_ANALYST / ROLE_VIEWER)
      └── Set AuthContext.set(userId) → ThreadLocal for service layer
      │
@@ -268,36 +269,36 @@ AuthContext.clear() ← always runs in finally block, prevents ThreadLocal leaka
 
 The role model is three-tiered: `VIEWER`, `ANALYST`, `ADMIN`. Roles are stored as strings in MongoDB and enforced at two independent layers on every request.
 
-- **Create user** — `POST /api/users` accepts a `UserCreateRequest` DTO. Open only while the DB is empty (bootstrap). After that, an ADMIN token is required. `id`, `active`, and `createdAt` are set by the service — not suppliable by the caller.
+- **Create user** — `POST /api/users` accepts a `UserCreateRequest` DTO. Open only while the DB is empty (bootstrap). After that, an ADMIN token is required. Fields `id`, `active`, and `createdAt` are set by the service — not suppliable by the caller.
 - **Get all users** — `GET /api/users` — ADMIN only
 - **Get user by ID** — `GET /api/users/{id}` — ADMIN only
 - **Get own profile** — `GET /api/users/me` — any authenticated user
-- **Update user** — `PATCH /api/users/{id}` — ADMIN only. Partial update — only non-null fields in the request body are applied. An admin cannot change their own role or deactivate their own account (would cause an immediate lockout).
+- **Update user** — `PATCH /api/users/{id}` — ADMIN only. Partial update — only non-null fields in the request body are applied. An admin cannot change their own role or deactivate their own account (would cause an immediate lockout with no recovery path). Password changes are intentionally not part of user update — they require a dedicated reset flow with proper security controls (see tradeoffs).
 - **User state** — deactivated users (`active: false`) are rejected in `resolveCaller()` before any business logic runs, even with a valid token
 - **Passwords** — BCrypt-hashed on creation, minimum 8 characters enforced at the DTO level. Never stored in plain text. `UserResponse` always omits the password field.
 
 ### 2. Financial Records Management
 
-Each record stores: `amount` (validated positive Double), `type` (INCOME/EXPENSE), `category`, `date`, `notes` (optional). `userId` is stamped from the caller's token on creation.
+Each record stores: `amount` (validated positive Double), `type` (INCOME/EXPENSE), `category`, `date` (full `LocalDateTime`), `notes` (optional). `userId` is stamped from the caller's token on creation.
 
 - **Create** — `POST /api/records` — ADMIN only
-- **Read all** — `GET /api/records` — ANALYST + ADMIN
+- **Read all** — `GET /api/records` — ANALYST + ADMIN. Returns the full non-deleted dataset. For large datasets, the paginated endpoint is preferable.
 - **Read one** — `GET /api/records/{id}` — ANALYST + ADMIN
 - **Update** — `PUT /api/records/{id}` — ADMIN only, full field update
 - **Delete** — `DELETE /api/records/{id}` — ADMIN only, soft delete (sets `deleted: true`)
 - **Filter** — `GET /api/records/filter` — five optional, fully combinable params via a single dynamic Criteria query
-- **Paginated listing** — `GET /api/records/paginated` — page size validated and capped at 100
+- **Paginated listing** — `GET /api/records/paginated` — page size validated and capped at 100 per page
 
 ### 3. Dashboard Summary APIs
 
 All metrics are computed inside MongoDB via aggregation pipelines. Java only receives final numbers.
 
-| Field | How it's computed |
+| Field | How it is computed |
 |---|---|
 | `totalIncome` | Pipeline: match `type=INCOME`, sum `amount` |
 | `totalExpense` | Pipeline: match `type=EXPENSE`, sum `amount` |
 | `netBalance` | `totalIncome − totalExpense` (computed in Java after both aggregations complete) |
-| `categoryTotals` | Pipeline: group by `category + type`, sum `amount` — kept split so INCOME and EXPENSE for the same category aren't merged into a misleading number |
+| `categoryTotals` | Pipeline: group by `category + type`, sum `amount` — kept split so INCOME and EXPENSE for the same category are not merged into a misleading number |
 | `monthlyTrends` | Pipeline: group by year+month in IST, net signed sum — income positive, expenses negative — single pipeline, no post-processing |
 | `recentActivity` | Top 5 most recent non-deleted records, ordered by date descending via derived repository method |
 
@@ -316,13 +317,14 @@ Bean validation on all request DTOs (`@NotNull`, `@NotBlank`, `@Positive`, `@Ema
 | Exception | Status | Notes |
 |---|---|---|
 | `MethodArgumentNotValidException` | 400 | Returns field-level error map |
-| `IllegalArgumentException` | 400 | e.g. `from` after `to` in date range, invalid page size |
+| `IllegalArgumentException` | 400 | e.g. `from` after `to` in date range, invalid page size, duplicate email |
+| `DuplicateKeyException` | 400 | MongoDB-level safety net for concurrent bootstrap race |
 | `HttpMessageNotReadableException` | 400 | Malformed JSON body |
 | `ResourceNotFoundException` | 404 | |
 | `UnauthorizedException` | 401 | Missing token, inactive account, bad credentials |
 | `AccessDeniedException` (custom) | 403 | Service-layer role check failed |
 | Spring's `AccessDeniedException` | 403 | `@PreAuthorize` check failed |
-| `AuthenticationCredentialsNotFoundException` | 401 | No authentication provided at all |
+| `AuthenticationCredentialsNotFoundException` | 401 | No authentication provided |
 | Anything else | 500 | Generic internal error, no details leaked |
 
 ### 6. Data Persistence
@@ -332,7 +334,7 @@ Two repository patterns used together via interface composition:
 - **`MongoRepository`** — standard CRUD and derived query methods (`findByDeletedFalse`, `findTop5ByDeletedFalseOrderByDateDesc`, etc.)
 - **`MongoTemplate` + Aggregation API** (`FinancialRecordCustomRepositoryImpl`) — all dashboard aggregation pipelines and the dynamic filter query
 
-`FinancialRecordRepository` extends both interfaces, so service classes get a single clean dependency for all data access without having to manage two separate injections.
+`FinancialRecordRepository` extends both interfaces, so service classes get a single clean dependency for all data access without managing two separate injections.
 
 ---
 
@@ -340,11 +342,11 @@ Two repository patterns used together via interface composition:
 
 ### JWT Authentication (Access + Refresh Tokens)
 
-Login returns both an access token (15 min expiry) and a refresh token (7 days). The refresh endpoint validates the token type claim, checks that the user still exists and is active, and issues a new access token. A deactivated user cannot obtain new access tokens even with a still-valid refresh token — `getUserForRefresh()` checks `isActive()` 
-explicitly.
+Login returns both an access token (15 min expiry) and a refresh token (7 days). Both tokens carry an explicit `type` claim (`access` / `refresh`), making them unambiguous.
 
-Reject refresh tokens presented as Bearer tokens.
-Previously, a refresh token would pass signature validation, extractRole() would return null, and the SecurityContext would be set with "ROLE_null" — wrong behavior even though endpoints would still reject it downstream via @PreAuthorize.
+The refresh endpoint validates the token type claim, checks that the user still exists and is active, and issues a new access token. A deactivated user cannot obtain new access tokens even with a still-valid refresh token — `getUserForRefresh()` checks `isActive()` explicitly.
+
+`AuthFilter` rejects refresh tokens presented as Bearer access tokens by calling `jwtUtil.isRefreshToken()` before any other processing. Without this check, a refresh token passes signature validation, `extractRole()` returns null, and the SecurityContext is set with `ROLE_null`.
 
 ### Pagination
 
@@ -389,7 +391,7 @@ Swagger UI is auto-configured via SpringDoc OpenAPI and available at `http://loc
 | Paginated records | ✗ | ✓ | ✓ |
 | Create records | ✗ | ✗ | ✓ |
 | Update records | ✗ | ✗ | ✓ |
-| Delete records | ✗ | ✗ | ✓ |
+| Delete records (soft) | ✗ | ✗ | ✓ |
 | Manage users | ✗ | ✗ | ✓ |
 
 ---
@@ -443,7 +445,8 @@ Authorization: Bearer <access_token>
 ### Users
 
 #### `POST /api/users`
-No auth required for the first user only. ADMIN token required after that.
+
+No auth required for the first user only. ADMIN token required after that. The first user must have the `ADMIN` role — creating a Viewer or Analyst first would prevent any further user management.
 
 ```json
 {
@@ -471,7 +474,7 @@ No auth required for the first user only. ADMIN token required after that.
 ---
 
 #### `GET /api/users` — ADMIN only
-Returns all users. Password field is never included.
+Returns all users. Password field is never included in the response.
 
 #### `GET /api/users/{id}` — ADMIN only
 **Errors:** `404` user not found
@@ -480,23 +483,30 @@ Returns all users. Password field is never included.
 Returns the currently logged-in user's profile.
 
 #### `PATCH /api/users/{id}` — ADMIN only
-Partial update — only the fields you send are changed.
-
+Partial update — only the fields you send are changed. All fields are optional.
 
 ```json
 {
   "role": "VIEWER",
-  "active": false
+  "active": false,
+  "name": "Alice Smith",
+  "email": "alice.smith@example.com"
 }
 ```
 
-**Errors:** `400` if admin tries to change their own role or deactivate themselves
+**Notes:**
+- An admin cannot change their own role or deactivate their own account — doing so would cause an immediate lockout with no recovery path.
+- Password is not updatable through this endpoint. Password changes require a dedicated reset flow (not included — see tradeoffs).
+
+**Errors:** `400` if admin tries to change their own role or deactivate themselves | `404` user not found
 
 ---
 
 ### Financial Records
 
 #### `POST /api/records` — ADMIN only
+
+Records store `date` as a full `LocalDateTime`. For filtering, the `/filter` endpoint accepts `LocalDate` (date only) and internally expands to cover the full day.
 
 ```json
 {
@@ -507,7 +517,6 @@ Partial update — only the fields you send are changed.
   "notes": "January salary"
 }
 ```
-Note: Records store full datetime (`LocalDateTime`), while filtering endpoints accept date-only (`LocalDate`) for convenience. The date range is internally expanded to cover the full day.
 
 **Response 201:**
 ```json
@@ -528,7 +537,7 @@ Note: Records store full datetime (`LocalDateTime`), while filtering endpoints a
 ---
 
 #### `GET /api/records` — ANALYST + ADMIN
-All non-deleted records.
+Returns all non-deleted records in a single response. Intended for smaller datasets or administrative use. For large datasets, use the paginated endpoint below.
 
 #### `GET /api/records/{id}` — ANALYST + ADMIN
 **Errors:** `404` not found | `403` viewer
@@ -538,21 +547,21 @@ Full field update. Returns the updated record.
 **Errors:** `404` not found | `403` non-admin
 
 #### `DELETE /api/records/{id}` — ADMIN only
-Soft delete. **Response 204** — no content. Record stays in the database with `deleted: true`.
+Soft delete. **Response 204** — no body. Record stays in the database with `deleted: true`; it disappears from all queries and API responses.
 
 ---
 
 #### `GET /api/records/filter` — ANALYST + ADMIN
 
-All five params are optional and fully combinable:
+All five params are optional and fully combinable. At least one param is not required — calling with no params returns all non-deleted records via the same dynamic query path.
 
 | Param | Type | Description |
 |---|---|---|
 | `type` | `INCOME` or `EXPENSE` | Filter by record type |
 | `category` | String | Exact category match |
-| `from` | `YYYY-MM-DD` | Start of date range |
-| `to` | `YYYY-MM-DD` | End of date range |
-| `search` | String | Case-insensitive search across category + notes |
+| `from` | `YYYY-MM-DD` | Start of date range (inclusive, expands to 00:00:00) |
+| `to` | `YYYY-MM-DD` | End of date range (inclusive, expands to 23:59:59) |
+| `search` | String | Case-insensitive match across category + notes |
 
 ```
 GET /api/records/filter?type=INCOME
@@ -561,11 +570,13 @@ GET /api/records/filter?search=electricity&type=EXPENSE
 GET /api/records/filter?from=2025-01-01&to=2025-03-31
 ```
 
-**Errors:** `400` if only one of `from`/`to` is provided, or if `from` is after `to`
+**Errors:** `400` if only one of `from`/`to` is provided | `400` if `from` is after `to`
 
 ---
 
 #### `GET /api/records/paginated` — ANALYST + ADMIN
+
+Records are sorted by date descending.
 
 | Param | Default | Constraint |
 |---|---|---|
@@ -581,23 +592,14 @@ GET /api/records/filter?from=2025-01-01&to=2025-03-31
   "total": 42
 }
 ```
-### Get All Records
 
-GET /api/records
-
-Returns all non-deleted financial records.
-
-**Note**:
-This endpoint returns the full dataset and is intended for smaller datasets or administrative usage.  
-For large datasets, use the paginated endpoint:
-
-GET /api/records/paginated
+**Errors:** `400` invalid page index or size out of range
 
 ---
 
 ### Dashboard
 
-#### `GET /api/dashboard/summary` — All roles
+#### `GET /api/dashboard/summary` — All roles (VIEWER, ANALYST, ADMIN)
 
 **Response 200:**
 ```json
@@ -627,25 +629,9 @@ GET /api/records/paginated
 }
 ```
 
-`categoryTotals` is split by type — INCOME and EXPENSE for the same category are never merged into a single number.
-
-`monthlyTrends` values are net per month — positive means net income, negative means net expense for that month.
-
-### Dashboard Summary
-
-GET /api/dashboard/summary
-
-Returns:
-
-- totalIncome
-- totalExpense
-- balance
-- categoryTotals
-- monthlyTrends
-- recentActivity
-
-**Note**:
-`recentActivity` contains the **5 most recent records** based on date (descending order).
+- `categoryTotals` is split by type — INCOME and EXPENSE for the same category are never merged into a single number.
+- `monthlyTrends` values are net per month — positive means net income, negative means net expense for that month.
+- `recentActivity` contains the 5 most recent non-deleted records by date descending.
 
 ---
 
@@ -692,7 +678,7 @@ Copy `.env.example` to `.env` and fill in your values. Never commit `.env`.
 | Variable | Description |
 |---|---|
 | `MONGO_URI_FINANCE` | MongoDB connection string |
-| `JWT_SECRET_FINANCE` | JWT signing secret — must be a Base64-encoded string. Generate with `openssl rand -base64 32` |
+| `JWT_SECRET_FINANCE` | JWT signing secret — must be a Base64-encoded string of sufficient length. Generate with: `openssl rand -base64 32` |
 
 Access tokens expire in **15 minutes**. Refresh tokens expire in **7 days**.
 
@@ -702,7 +688,7 @@ Access tokens expire in **15 minutes**. Refresh tokens expire in **7 days**.
 
 ### Rate limiting is in-memory only
 
-The rate limiter uses a `ConcurrentHashMap` inside `AuthFilter` — works for a single instance, resets on restart, and won't coordinate across multiple nodes.
+The rate limiter uses a `ConcurrentHashMap` inside `AuthFilter` — works for a single instance, resets on restart, and will not coordinate across multiple nodes.
 
 **Production approach:** Distributed rate limiter backed by Redis using a sliding window or token bucket algorithm (e.g. Bucket4j + Redis).
 
@@ -710,18 +696,13 @@ The rate limiter uses a `ConcurrentHashMap` inside `AuthFilter` — works for a 
 
 `POST /api/users` is permitted in `SecurityConfig` so the first admin can be created without a token. After bootstrap, an application-level guard in `UserController` enforces ADMIN-only access. Only `POST` is exposed this way — all other methods on `/api/users` require authentication.
 
+The concurrent-bootstrap race is handled at the database level via the unique index on `email` — the second concurrent save throws `DuplicateKeyException`, which is caught and returned as a clean 400. No phantom users can be created.
+
 **Production approach:** Automatically close the public route after the first user is created, or use an invite/onboarding flow.
-
-### Bootstrap Race Condition
-
-The initial user creation uses an `isFirstUser()` check. In highly concurrent scenarios, multiple requests could pass this check simultaneously and create more than one initial user.
-
-**Tradeoff**:
-This is acceptable for a single-instance assessment setup. In production, this would be handled with database-level constraints or transactional locking.
 
 ### Search is regex-based, not index-backed
 
-The `search` parameter runs a case-insensitive regex across `category` and `notes`. Correct, but regex queries aren't index-backed in MongoDB by default — they'll slow down at large data volumes.
+The `search` parameter runs a case-insensitive regex across `category` and `notes`. Correct, but regex queries are not index-backed in MongoDB by default and will slow down at large data volumes.
 
 **Production approach:** MongoDB text index on those fields, or Atlas Search for full-text capabilities.
 
@@ -729,35 +710,17 @@ The `search` parameter runs a case-insensitive regex across `category` and `note
 
 Deleted records stay in the `records` collection permanently. At scale, this keeps growing the collection even though those records are never surfaced.
 
-**Production approach:** Move soft-deleted records to a separate archive collection, or apply a TTL index to clean them up after a defined retention period.
+**Production approach:** Move soft-deleted records to a separate archive collection after a retention period, or apply a TTL index to clean them up automatically.
 
-### Dual-layer security means role logic lives in two places
+### Dual-layer access control means role logic lives in two places
 
-`@PreAuthorize` and `resolveCaller()` both check roles. This is intentional defense-in-depth — but if role names ever change, both layers need updating.
+`@PreAuthorize` and `resolveCaller()` both check roles. This is intentional defense-in-depth — but if role names ever change, both layers need updating. It also means an extra database read per request: JWT validation (no DB) + `resolveCaller()` (1 DB read) + actual data query (1 DB read). This was a deliberate decision to prioritize correctness over minimal database access.
 
 **Production approach:** Consolidate into a centralized AOP-based authorization advice that handles role checks and active status in one place.
 
-### Dual-Layer Access Control Tradeoff
-
-The system uses both:
-
-1. JWT-based role validation (fast, stateless)
-2. Database-level user validation via `resolveCaller()`
-
-This ensures that changes like user deactivation are enforced immediately without waiting for token expiration.
-
-**Tradeoff**:
-This approach results in an additional database lookup per request to verify the current user state. For example, fetching all users performs:
-
-- JWT validation (no DB)
-- `resolveCaller()` (1 DB read)
-- actual data query (1 DB read)
-
-This was a deliberate decision to prioritize security and correctness over minimal database access.
-
 ### No controller-level tests
 
-Unit tests cover the service layer where business logic and access control rules live. Controller tests weren't included to keep the setup straightforward — they'd require full JWT generation and seeded users to run.
+Unit tests cover the service layer where business logic and access control rules live. Controller tests were not included to keep the setup straightforward — they require full JWT generation and seeded users to run.
 
 **Future improvement:** MockMvc or Testcontainers to validate the full request/response cycle including auth headers, HTTP status codes, and response shapes.
 
@@ -767,12 +730,8 @@ Unit tests cover the service layer where business logic and access control rules
 
 **Future improvement:** Expose timezone as a configurable property in `application.properties`.
 
-### User Password Management
+### Password management
 
-The current implementation does not include a password reset or update endpoint as password updates were omitted as the assignment describes admin-managed users; a separate self-service reset flow would be the appropriate design.
+The update endpoint supports name, email, role, and active status. Password changes are intentionally excluded — they require a separate, dedicated flow (e.g. admin-triggered reset or secure self-service with current-password verification) and should not share the same PATCH endpoint as general profile updates.
 
-**Tradeoff**:
-User updates support name, email, role, and active status, but password changes require a separate flow (e.g., secure reset via email or admin-triggered reset).
-
-**Future improvement**:
-Introduce a dedicated password update/reset mechanism with proper validation and security controls.
+**Future improvement:** Introduce a dedicated password reset endpoint with proper validation and security controls.

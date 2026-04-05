@@ -18,17 +18,20 @@ public class DashboardService {
 
     public DashboardSummary getSummary() {
 
+        // resolveCaller() is called here solely to verify the caller exists and is active.
+        // The dashboard is accessible to all three roles (VIEWER, ANALYST, ADMIN), so no
+        // role assertion follows — just the liveness check that @PreAuthorize cannot do.
         userService.resolveCaller();
+
         Map<String, Double> totals = recordRepository.getIncomeExpenseTotals();
 
         double totalIncome = totals.getOrDefault("INCOME", 0.0);
         double totalExpense = totals.getOrDefault("EXPENSE", 0.0);
 
-        // Existing aggregations
         Map<String, Map<String, Double>> categoryTotals = recordRepository.getCategoryTotals();
         Map<String, Double> monthlyTrends = recordRepository.getMonthlyTrends();
 
-        // Recent activity (last 5 records)
+        // Recent activity — last 5 records by date descending
         List<Map<String, Object>> recentActivity = recordRepository.findTop5ByDeletedFalseOrderByDateDesc().stream()
                 .map(r -> {
                     Map<String, Object> entry = new LinkedHashMap<>();
