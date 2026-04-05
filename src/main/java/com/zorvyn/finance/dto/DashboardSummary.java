@@ -16,6 +16,6 @@ public class DashboardSummary {
     private double totalExpense;
     private double netBalance;
     private Map<String, Map<String, Double>> categoryTotals;
-    private List<Map<String, Object>> recentActivity;
+    private List<RecentActivityItem> recentActivity;
     private Map<String, Double> monthlyTrends;
 }

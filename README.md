@@ -845,3 +845,12 @@ Unit tests cover the service layer where business logic and access control rules
 The update endpoint supports name, email, role, and active status. Password changes are intentionally excluded — they require a separate, dedicated flow (e.g. admin-triggered reset or secure self-service with current-password verification) and should not share the same PATCH endpoint as general profile updates.
 
 **Future improvement:** Introduce a dedicated password reset endpoint with proper validation and security controls.
+
+### Unbounded Records Endpoint
+
+The endpoint GET /api/records returns all non-deleted records without pagination.
+
+**Tradeoff**:
+This is intended for smaller datasets or administrative usage. For large datasets, the paginated endpoint (/api/records/paginated) should be used.
+
+In a production system, this endpoint would be either removed, restricted, or capped to prevent excessive memory usage.

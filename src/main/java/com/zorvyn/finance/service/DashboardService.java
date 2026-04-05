@@ -1,6 +1,7 @@
 package com.zorvyn.finance.service;
 
 import com.zorvyn.finance.dto.DashboardSummary;
+import com.zorvyn.finance.dto.RecentActivityItem;
 import com.zorvyn.finance.repository.FinancialRecordRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -32,17 +33,13 @@ public class DashboardService {
         Map<String, Double> monthlyTrends = recordRepository.getMonthlyTrends();
 
         // Recent activity — last 5 records by date descending
-        List<Map<String, Object>> recentActivity = recordRepository.findTop5ByDeletedFalseOrderByDateDesc().stream()
-                .map(r -> {
-                    Map<String, Object> entry = new LinkedHashMap<>();
-                    entry.put("id", r.getId());
-                    entry.put("type", r.getType());
-                    entry.put("amount", r.getAmount());
-                    entry.put("category", r.getCategory());
-                    entry.put("date", r.getDate());
-                    return entry;
-                })
-                .toList();
+        List<RecentActivityItem> recentActivity = recordRepository.findTop5ByDeletedFalseOrderByDateDesc().stream().map(r -> new RecentActivityItem(
+                r.getId(),
+                r.getType(),
+                r.getAmount(),
+                r.getCategory(),
+                r.getDate()
+        )).toList();
 
         return new DashboardSummary(
                 totalIncome,

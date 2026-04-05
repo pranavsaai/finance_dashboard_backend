@@ -60,8 +60,7 @@ public class FinancialRecordService {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
 
-        FinancialRecord existing = recordRepository.findById(id)
-                .filter(r -> !r.isDeleted())
+        FinancialRecord existing = recordRepository.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
 
         existing.setAmount(request.getAmount());
@@ -78,9 +77,7 @@ public class FinancialRecordService {
         User caller = userService.resolveCaller();
         assertAdmin(caller);
 
-        FinancialRecord record = recordRepository.findById(id)
-                .filter(r -> !r.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
+        FinancialRecord record = recordRepository.findById(id).filter(r -> !r.isDeleted()).orElseThrow(() -> new ResourceNotFoundException("Record not found with id: " + id));
 
         record.setDeleted(true);
         recordRepository.save(record);
